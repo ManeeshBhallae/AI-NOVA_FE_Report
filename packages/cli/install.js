@@ -196,6 +196,73 @@ function patchPackageJson(targetRoot) {
     return changed;
 }
 
+/**
+ * Adds a "/nova" entry to every ui5*.yaml's fiori-tools-proxy backend list,
+ * so the dev server actually forwards chat calls to the local CAP service
+ * instead of 404ing against itself. Apps that never had a CAP backend
+ * before (unlike ai_report) never had this entry - a real gap found while
+ * installing into employee_ai_report. Edits the text directly rather than
+ * a full YAML round-trip, to leave comments and formatting untouched.
+ */
+function patchUi5YamlBackends(targetRoot) {
+    const files = fs.readdirSync(targetRoot).filter((f) => /^ui5.*\.yaml$/.test(f));
+    if (!files.length) {
+        console.log("  no ui5*.yaml files found - nothing to patch");
+        return;
+    }
+
+    files.forEach((fileName) => {
+        const filePath = path.join(targetRoot, fileName);
+        const original = fs.readFileSync(filePath, "utf8");
+
+        if (/path:\s*\/nova\b/.test(original)) {
+            console.log("  " + fileName + " already proxies /nova - left as is");
+            return;
+        }
+
+        const lines = original.split("\n");
+        const proxyIdx = lines.findIndex((l) => /name:\s*fiori-tools-proxy/.test(l));
+        if (proxyIdx === -1) {
+            console.log("  " + fileName + " has no fiori-tools-proxy middleware - skipped, add the /nova proxy manually");
+            return;
+        }
+
+        // the backend: list belongs to this middleware only if found before
+        // the next sibling "- name:" entry at the same (4-space) indent
+        let backendIdx = -1;
+        let blockEnd = lines.length;
+        for (let i = proxyIdx + 1; i < lines.length; i++) {
+            if (/^\s{4}- name:/.test(lines[i])) {
+                blockEnd = i;
+                break;
+            }
+            if (backendIdx === -1 && /^\s*backend:\s*$/.test(lines[i])) {
+                backendIdx = i;
+            }
+        }
+        if (backendIdx === -1) {
+            console.log("  " + fileName + " has fiori-tools-proxy but no backend: list - skipped, add the /nova proxy manually");
+            return;
+        }
+
+        const backendIndent = lines[backendIdx].match(/^(\s*)/)[1];
+        const itemIndent = backendIndent + "  ";
+        const urlIndent = itemIndent + "  ";
+
+        // insert after the last existing "- path: ..." / "url: ..." pair
+        let insertAt = backendIdx + 1;
+        for (let i = backendIdx + 1; i < blockEnd; i++) {
+            if (new RegExp("^" + itemIndent + "- path:").test(lines[i])) {
+                insertAt = i + 2;
+            }
+        }
+
+        lines.splice(insertAt, 0, itemIndent + "- path: /nova", urlIndent + "url: http://localhost:4004");
+        fs.writeFileSync(filePath, lines.join("\n"));
+        console.log("  patched " + fileName + " (added /nova backend proxy)");
+    });
+}
+
 function writeEnvExample(targetRoot) {
     const dest = path.join(targetRoot, ".env.example");
     if (fs.existsSync(dest)) {
@@ -230,6 +297,7 @@ function main() {
     console.log("Frontend:");
     copyVendoredFiles(targetRoot, nsDot, nsSlash);
     patchManifest(targetRoot, nsDot);
+    patchUi5YamlBackends(targetRoot);
 
     console.log("\nBackend:");
     copyCapFiles(targetRoot);
