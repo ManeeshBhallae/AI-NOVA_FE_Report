@@ -53,20 +53,57 @@ One code path, picked at runtime, not two separate installs:
 
 - **Local dev**: `AICORE_SERVICE_KEY` in `.env` (the SDK's own default
   fallback). Always available, regardless of deploy config.
-- **Production**: set `NOVA_AI_DESTINATION=<destination name>` instead - the
-  service then looks up that BTP destination. This only resolves if the app
-  is bound to a destination service instance, which requires CF deploy
-  config to exist first. The installer detects this (checking for
-  `mta.yaml` and a `nodejs` module in it) and tells you exactly what's
-  missing:
-  - no `mta.yaml` → destination-based config isn't reachable yet; run
-    `fiori add deploy-config` first.
-  - `mta.yaml` but no backend module → run `npx cds add destination` (not
-    `cds add ai`, which scaffolds a direct service binding instead and
-    isn't what `NOVA_AI_DESTINATION` uses). This adds both the CAP backend
-    deployment module and a destination-service binding for it.
-  - backend module already present → just create the actual AI Core
-    destination in BTP and set `NOVA_AI_DESTINATION` to its name.
+- **Production**: `NOVA_AI_DESTINATION=<destination name>` instead - the
+  service looks up that BTP destination. This only resolves if the app is
+  bound to a destination service instance, which requires CF deploy config
+  to exist first.
+
+`install.js` alone only covers the local-dev path. For production, run the
+second command:
+
+```bash
+node ../nova-copilot/packages/cli/prepare-cf.js
+```
+
+It refuses to run at all if the app has no `mta.yaml` yet (a destination
+can't resolve without deploy config - run `fiori add deploy-config` first).
+If `mta.yaml` exists, it:
+
+1. Runs the normal install (same as `install.js`).
+2. Asks for the AI Core destination name (must already exist in BTP, in the
+   subaccount you'll deploy to) - or pass it directly with
+   `--destination <name>` to skip the prompt.
+3. Adds a CAP backend deployment module + its own destination-service
+   binding, if missing - via `npx cds add destination` (CAP's own official
+   scaffolding, not reinvented here; **not** `cds add ai`, which scaffolds a
+   direct service binding instead and isn't what `NOVA_AI_DESTINATION` uses).
+4. Adds the `before-all: cds build --production` hook `mbt build` needs -
+   without it, a fresh build fails with `"gen/srv" path ... does not exist`,
+   since `gen/` is `cds build`'s own output and nothing else produces it.
+5. Writes `NOVA_AI_DESTINATION: <name>` as a property on that backend
+   module in `mta.yaml` (updates it in place on a re-run with a different
+   name, rather than duplicating).
+
+**Not automated** - do this by hand, it varies too much by existing
+`mta.yaml` shape to template safely: wiring a `srv-api` destination into
+your destination-content module (pointing at `~{srv-api/srv-url}`), so the
+deployed app can actually route `/nova` to this backend in production. The
+block to add (verified working on `ai_report`):
+
+```yaml
+# in the destination-content module's own requires: list
+- name: srv-api
+  parameters:
+    content-target: true
+# and in that same module's destinations: list
+- Name: srv-api
+  URL: ~{srv-api/srv-url}
+  Authentication: NoAuthentication
+  HTML5.ForwardAuthToken: true
+  ProxyType: Internet
+  Type: HTTP
+  sap.cloud.service: <your app id>
+```
 
 This only covers the AI Core credential path. It does **not** cover routing
 (e.g. an approuter's `/nova` route forwarding to the deployed backend) -
