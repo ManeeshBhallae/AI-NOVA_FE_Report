@@ -134,6 +134,15 @@ function patchManifest(targetRoot, nsDot) {
     }
 }
 
+/**
+ * Not every Fiori Elements app already has a CAP backend wired up - plenty
+ * of List Report apps are generated as pure UI5 frontends with no srv/
+ * runtime at all. NovaService needs @sap/cds (runtime) and @sap/cds-dk (the
+ * `cds` CLI - without it `cds watch`/`cds-serve` fall back to whatever is
+ * globally installed, which can be a different version and refuse to run;
+ * see ai_report's own history). So all of this is added too, not just the
+ * AI-specific packages, whenever it isn't already there.
+ */
 function patchPackageJson(targetRoot) {
     const pkgPath = path.join(targetRoot, "package.json");
     if (!fs.existsSync(pkgPath)) {
@@ -141,20 +150,48 @@ function patchPackageJson(targetRoot) {
     }
     const pkg = readJson(pkgPath);
     const deps = pkg.dependencies || (pkg.dependencies = {});
+    const devDeps = pkg.devDependencies || (pkg.devDependencies = {});
+    const scripts = pkg.scripts || (pkg.scripts = {});
     let changed = false;
-    if (!deps["@sap-ai-sdk/orchestration"]) {
-        deps["@sap-ai-sdk/orchestration"] = "^2";
+
+    [["@sap-ai-sdk/orchestration", "^2"], ["pdf-parse", "^2.4.5"], ["@sap/cds", "^10"]]
+        .forEach(([name, version]) => {
+            if (!deps[name]) {
+                deps[name] = version;
+                changed = true;
+            }
+        });
+
+    if (!devDeps["@sap/cds-dk"]) {
+        devDeps["@sap/cds-dk"] = "^10";
         changed = true;
     }
-    if (!deps["pdf-parse"]) {
-        deps["pdf-parse"] = "^2.4.5";
+
+    if (!scripts["start-srv"]) {
+        scripts["start-srv"] = "cds-serve";
         changed = true;
     }
+    if (!scripts["watch-srv"]) {
+        scripts["watch-srv"] = "cds watch";
+        changed = true;
+    }
+
+    // lets cds-serve/cds watch run locally without a real auth setup
+    const cdsConfig = pkg.cds || (pkg.cds = {});
+    const requires = cdsConfig.requires || (cdsConfig.requires = {});
+    if (!requires.auth) {
+        requires.auth = {
+            "[development]": { kind: "mocked" },
+            "[production]": { kind: "xsuaa" }
+        };
+        changed = true;
+    }
+
     if (changed) {
         writeJson(pkgPath, pkg);
-        console.log("  patched package.json (added @sap-ai-sdk/orchestration, pdf-parse)");
+        console.log("  patched package.json (AI deps + @sap/cds runtime/CLI + start-srv/watch-srv scripts, as needed)");
     } else {
-        console.log("  package.json already has the required dependencies");
+        console.log("  package.json already has everything needed");
     }
     return changed;
 }
