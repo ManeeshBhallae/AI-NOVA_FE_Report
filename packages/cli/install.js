@@ -263,12 +263,10 @@ function patchUi5YamlBackends(targetRoot) {
     });
 }
 
+// Always refreshed, unlike srv/*.js - this is generated documentation, not
+// something a team would hand-edit (their real values go in .env, untouched).
 function writeEnvExample(targetRoot) {
     const dest = path.join(targetRoot, ".env.example");
-    if (fs.existsSync(dest)) {
-        console.log("  .env.example already exists - left as is");
-        return;
-    }
     const src = path.join(__dirname, "..", "cap-module", ".env.example");
     fs.copyFileSync(src, dest);
     console.log("  wrote .env.example (copy to .env and fill in your own AI Core credentials)");
@@ -304,13 +302,33 @@ function main() {
     const depsChanged = patchPackageJson(targetRoot);
     writeEnvExample(targetRoot);
 
-    console.log("\nDone. Next steps:");
-    if (depsChanged) {
-        console.log("  1. npm install                 (picks up the two new dependencies)");
+    // A BTP destination only resolves at runtime if this app is actually
+    // bound to a destination service instance - which only exists once it
+    // has CF deploy config. mta.yaml's presence is the simplest signal of
+    // that; offering destination-based config without it would be a dead end.
+    const hasDeployConfig = fs.existsSync(path.join(targetRoot, "mta.yaml"));
+
+    console.log("\nAI Core credentials - two ways to supply them, same code either way:");
+    console.log("  - Local dev: cp .env.example .env, fill in AICORE_SERVICE_KEY.");
+    if (hasDeployConfig) {
+        console.log("  - Production: this app has CF deploy config (mta.yaml found), so a BTP");
+        console.log("    destination works too - set NOVA_AI_DESTINATION=<destination name> instead");
+        console.log("    (needs a destination service instance bound in mta.yaml, and the actual");
+        console.log("    destination created in BTP pointing at your AI Core instance).");
+    } else {
+        console.log("  - Production / destination-based config isn't available yet - this app has");
+        console.log("    no mta.yaml (no CF deploy config), so there is nothing to bind a destination");
+        console.log("    service instance to. Run `fiori add deploy-config` first if you want that.");
     }
-    console.log("  " + (depsChanged ? "2" : "1") + ". cp .env.example .env, then fill in your AI Core credentials");
-    console.log("  " + (depsChanged ? "3" : "2") + ". optionally drop a webapp/nova-brief.json describing what this app is for");
-    console.log("  " + (depsChanged ? "4" : "3") + ". start your CAP service, then run the app - the launcher mounts itself");
+
+    console.log("\nDone. Next steps:");
+    let step = 1;
+    if (depsChanged) {
+        console.log("  " + step++ + ". npm install                 (picks up the two new dependencies)");
+    }
+    console.log("  " + step++ + ". set up AI Core credentials as described above");
+    console.log("  " + step++ + ". optionally drop a webapp/nova-brief.json describing what this app is for");
+    console.log("  " + step++ + ". start your CAP service, then run the app - the launcher mounts itself");
 }
 
 main();

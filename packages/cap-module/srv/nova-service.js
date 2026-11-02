@@ -34,6 +34,25 @@ function modelName() {
     return process.env.NOVA_MODEL || DEFAULT_MODEL;
 }
 
+/**
+ * Two ways to reach AI Core, picked at runtime by whether NOVA_AI_DESTINATION
+ * is set - no separate code path or separate install needed for either:
+ *   - unset:  the SDK's own default resolution - AICORE_SERVICE_KEY from the
+ *             environment (local dev, e.g. a .env file), or a directly bound
+ *             "aicore" service instance.
+ *   - set:    looks up a BTP destination by that name instead. Only resolves
+ *             at runtime if this app is actually bound to a destination
+ *             service instance, which only exists once this app has CF
+ *             deploy config (mta.yaml) set up - there is nothing to bind to
+ *             otherwise. Intended for production, where a shared AI Core
+ *             instance is handed out as a destination rather than a raw key.
+ * Passed as the OrchestrationClient's 3rd constructor argument either way.
+ */
+function aiDestination() {
+    const name = process.env.NOVA_AI_DESTINATION;
+    return name ? { destinationName: name } : undefined;
+}
+
 // models often wrap JSON in a ```json fence despite being told not to
 function stripCodeFence(sText) {
     if (!sText) {
@@ -122,7 +141,8 @@ module.exports = class NovaService extends cds.ApplicationService {
                         }
                     }
                 },
-                { resourceGroup: RESOURCE_GROUP }
+                { resourceGroup: RESOURCE_GROUP },
+                aiDestination()
             );
 
             try {
@@ -197,7 +217,8 @@ module.exports = class NovaService extends cds.ApplicationService {
                         }
                     }
                 },
-                { resourceGroup: RESOURCE_GROUP }
+                { resourceGroup: RESOURCE_GROUP },
+                aiDestination()
             );
 
             try {
