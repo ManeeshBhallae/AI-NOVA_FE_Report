@@ -1,0 +1,284 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+    xmlns:u="sap.ui.unified">
+
+    <!-- collapsed state: a floating launcher that doubles as the drag handle -->
+    <Button
+        id="novaLauncher"
+        visible="{= !${aiChat>/open} }"
+        icon="sap-icon://ai"
+        type="Emphasized"
+        tooltip="{novaI18n>askAiButtonText}"
+        press="onToggleOpen"
+        class="novaLauncher novaDragHandle" />
+
+    <Panel id="novaPanel" visible="{aiChat>/open}" class="novaDock">
+        <headerToolbar>
+            <OverflowToolbar id="novaHeaderToolbar" height="3.25rem" class="novaDockHeader novaDragHandle">
+                <Avatar
+                    id="novaHeaderAvatar"
+                    src="sap-icon://ai"
+                    displaySize="XS"
+                    displayShape="Circle"
+                    class="novaAvatarBot" />
+                <VBox id="novaHeaderTitles" class="sapUiTinyMarginBegin novaHeaderTitles">
+                    <Title id="novaHeaderTitle" text="{novaI18n>novaChatTitle}" level="H6" />
+                    <Text
+                        id="novaHeaderStatus"
+                        text="{= ${aiChat>/busy} ? 'Thinking…' : ${novaI18n>novaChatSubtitle} }"
+                        class="novaHeaderStatus" />
+                </VBox>
+                <ToolbarSpacer id="novaHeaderSpacer" />
+                <u:FileUploader
+                    id="novaUploader"
+                    buttonOnly="true"
+                    iconOnly="true"
+                    icon="sap-icon://attachment"
+                    tooltip="Fill this record in from a document"
+                    buttonType="Transparent"
+                    fileType="txt,csv,tsv,json,md,xml,log,pdf"
+                    multiple="false"
+                    change="onDocumentSelected"
+                    class="novaUploader" />
+                <OverflowToolbarButton
+                    id="novaChartButton"
+                    icon="sap-icon://bar-chart"
+                    text="Construct a chart"
+                    tooltip="Construct a chart"
+                    type="Transparent"
+                    press="onConstructChart" />
+                <OverflowToolbarButton
+                    id="novaKnowledgeButton"
+                    icon="sap-icon://information"
+                    text="What UX-NOVA knows"
+                    tooltip="What UX-NOVA knows about this app"
+                    type="Transparent"
+                    press="onToggleKnowledge" />
+                <OverflowToolbarButton
+                    id="novaClearButton"
+                    icon="sap-icon://clear-filter"
+                    text="Clear filters"
+                    tooltip="Clear filters"
+                    type="Transparent"
+                    press="onClearFiltersPress" />
+                <OverflowToolbarButton
+                    id="novaClearChatButton"
+                    icon="sap-icon://delete"
+                    text="Clear conversation"
+                    tooltip="Clear conversation"
+                    type="Transparent"
+                    enabled="{aiChat>/hasMessages}"
+                    press="onClearConversation" />
+                <Button
+                    id="novaMinimiseButton"
+                    icon="{= ${aiChat>/minimised} ? 'sap-icon://full-screen' : 'sap-icon://minimize' }"
+                    tooltip="{= ${aiChat>/minimised} ? 'Expand' : 'Minimise' }"
+                    type="Transparent"
+                    press="onToggleMinimise">
+                    <layoutData>
+                        <OverflowToolbarLayoutData id="novaMinimiseLayout" priority="NeverOverflow" />
+                    </layoutData>
+                </Button>
+                <Button
+                    id="novaCloseButton"
+                    icon="sap-icon://decline"
+                    tooltip="Close"
+                    type="Transparent"
+                    press="onChatClose">
+                    <layoutData>
+                        <OverflowToolbarLayoutData id="novaCloseLayout" priority="NeverOverflow" />
+                    </layoutData>
+                </Button>
+            </OverflowToolbar>
+        </headerToolbar>
+        <content>
+            <VBox id="novaBody" visible="{= !${aiChat>/minimised} }">
+            <VBox id="novaKnowledgePanel" visible="{aiChat>/showKnowledge}" class="novaKnowledge">
+                <HBox id="novaKnowledgeHeader" justifyContent="SpaceBetween" alignItems="Center">
+                    <Text id="novaKnowledgeTitle" text="What UX-NOVA knows about this app" class="novaKnowledgeTitle" />
+                    <HBox id="novaKnowledgeActions" alignItems="Center">
+                    <Button
+                        id="novaBackToChat"
+                        icon="sap-icon://nav-back"
+                        text="Back to chat"
+                        type="Transparent"
+                        press="onToggleKnowledge" />
+                    <Button
+                        id="novaKnowledgeRefresh"
+                        icon="sap-icon://refresh"
+                        tooltip="Re-read the app"
+                        type="Transparent"
+                        press="onRefreshKnowledge" />
+                    </HBox>
+                </HBox>
+                <List
+                    id="novaKnowledgeList"
+                    items="{aiChat>/knowledgeSources}"
+                    showSeparators="None"
+                    showNoData="false"
+                    backgroundDesign="Transparent">
+                    <CustomListItem id="novaKnowledgeItem" class="novaKnowledgeRow">
+                        <HBox id="novaKnowledgeRowBox" alignItems="Center" width="100%">
+                            <core:Icon
+                                id="novaKnowledgeIcon"
+                                src="{= ${aiChat>status} === 'ok' ? 'sap-icon://sys-enter-2' : (${aiChat>status} === 'warn' ? 'sap-icon://alert' : 'sap-icon://error') }"
+                                color="{= ${aiChat>status} === 'ok' ? 'Positive' : (${aiChat>status} === 'warn' ? 'Critical' : 'Negative') }"
+                                class="novaKnowledgeIcon" />
+                            <VBox id="novaKnowledgeTexts" class="novaKnowledgeTexts">
+                                <Text id="novaKnowledgeLabel" text="{aiChat>label}" class="novaKnowledgeLabel" />
+                                <Text id="novaKnowledgeDetail" text="{aiChat>detail}" class="novaKnowledgeDetail" />
+                            </VBox>
+                        </HBox>
+                    </CustomListItem>
+                </List>
+            </VBox>
+
+            <VBox
+                id="novaScroll"
+                visible="{= !${aiChat>/showKnowledge} }"
+                class="novaScrollArea">
+
+                <VBox
+                    id="novaEmptyState"
+                    visible="{= !${aiChat>/hasMessages} }"
+                    class="novaEmpty">
+                    <Avatar
+                        id="novaEmptyAvatar"
+                        src="sap-icon://ai"
+                        displaySize="S"
+                        displayShape="Circle"
+                        class="novaAvatarBot novaEmptyAvatar" />
+                    <Title id="novaEmptyTitle" text="How can I help?" level="H5" class="novaEmptyTitle" />
+                    <Text
+                        id="novaEmptyHint"
+                        text="Ask in plain English — I can filter this list or answer about what's on screen."
+                        textAlign="Center"
+                        class="novaEmptyHint" />
+                    <VBox id="novaSuggestions" class="novaSuggestions" items="{aiChat>/suggestions}">
+                        <Button
+                            id="novaSuggestionButton"
+                            text="{aiChat>text}"
+                            type="Transparent"
+                            press="onSuggestionPress"
+                            class="novaSuggestionChip" />
+                    </VBox>
+                </VBox>
+
+                <List
+                    id="novaMessageList"
+                    items="{aiChat>/messages}"
+                    showSeparators="None"
+                    showNoData="false"
+                    backgroundDesign="Transparent">
+                    <CustomListItem id="novaMessageItem" class="novaRow">
+                        <HBox
+                            id="novaRowBox"
+                            justifyContent="{= ${aiChat>role} === 'user' ? 'End' : 'Start' }"
+                            alignItems="Start"
+                            width="100%">
+                            <Avatar
+                                id="novaBotAvatar"
+                                src="sap-icon://ai"
+                                displaySize="XS"
+                                displayShape="Circle"
+                                visible="{= ${aiChat>role} !== 'user' }"
+                                class="novaAvatarBot" />
+                            <VBox
+                                id="novaBotBubble"
+                                visible="{= ${aiChat>role} !== 'user' }"
+                                class="novaBubble novaBubbleBot">
+                                <FormattedText id="novaBotText" htmlText="{aiChat>html}" class="novaRichText" />
+                                <VBox
+                                    id="novaMsgChart"
+                                    visible="{aiChat>hasChart}"
+                                    class="novaMsgChart" />
+                                <Button
+                                    id="novaExpandChartButton"
+                                    visible="{aiChat>hasChart}"
+                                    icon="sap-icon://full-screen"
+                                    text="View full screen"
+                                    type="Transparent"
+                                    press="onExpandChart"
+                                    class="novaExpandChart" />
+                                <VBox
+                                    id="novaPromptChips"
+                                    visible="{aiChat>hasPrompts}"
+                                    items="{aiChat>prompts}"
+                                    class="novaPromptChips">
+                                    <Button
+                                        id="novaPromptChip"
+                                        text="{aiChat>}"
+                                        type="Transparent"
+                                        press="onPromptPress"
+                                        class="novaSuggestionChip" />
+                                </VBox>
+                                <HBox
+                                    id="novaBasisBox"
+                                    visible="{= !!${aiChat>basis} }"
+                                    alignItems="Center"
+                                    class="novaBasis">
+                                    <core:Icon id="novaBasisIcon" src="sap-icon://source-code" class="novaBasisIcon" />
+                                    <Text id="novaBasisText" text="Based on {aiChat>basis}" />
+                                </HBox>
+                                <Text id="novaBotTime" text="{aiChat>time}" class="novaTime" />
+                            </VBox>
+                            <VBox
+                                id="novaUserBubble"
+                                visible="{= ${aiChat>role} === 'user' }"
+                                class="novaBubble novaBubbleUser">
+                                <Text id="novaUserText" text="{aiChat>text}" />
+                                <Text id="novaUserTime" text="{aiChat>time}" class="novaTime novaTimeUser" />
+                            </VBox>
+                            <Avatar
+                                id="novaUserAvatar"
+                                initials="{aiChat>/userInitials}"
+                                displaySize="XS"
+                                displayShape="Circle"
+                                visible="{= ${aiChat>role} === 'user' }"
+                                class="novaAvatarUser" />
+                        </HBox>
+                    </CustomListItem>
+                </List>
+
+                <HBox
+                    id="novaTypingRow"
+                    visible="{aiChat>/busy}"
+                    alignItems="Start"
+                    width="100%"
+                    class="novaRow">
+                    <Avatar
+                        id="novaTypingAvatar"
+                        src="sap-icon://ai"
+                        displaySize="XS"
+                        displayShape="Circle"
+                        class="novaAvatarBot" />
+                    <VBox id="novaTypingBubble" class="novaBubble novaBubbleBot novaTypingBubble">
+                        <BusyIndicator id="novaTypingBusy" size="1rem" />
+                    </VBox>
+                </HBox>
+            </VBox>
+
+            <Toolbar id="novaFooterToolbar" height="3.25rem" class="novaDockFooter">
+                <Input
+                    id="novaInput"
+                    value="{aiChat>/question}"
+                    placeholder="Ask about this screen…"
+                    submit="onSendPress"
+                    class="novaInput">
+                    <layoutData>
+                        <ToolbarLayoutData id="novaInputLayoutData" shrinkable="true" />
+                    </layoutData>
+                </Input>
+                <Button
+                    id="novaSendButton"
+                    icon="sap-icon://paper-plane"
+                    type="Emphasized"
+                    tooltip="Send"
+                    enabled="{= !${aiChat>/busy} &amp;&amp; !!${aiChat>/question} }"
+                    press="onSendPress" />
+            </Toolbar>
+            </VBox>
+        </content>
+    </Panel>
+</core:FragmentDefinition>

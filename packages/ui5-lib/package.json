@@ -1,0 +1,13 @@
+{
+  "name": "nova-copilot-ui5",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UI5 reuse library 'nova.copilot' - the AI chat/chart/document-fill dock for Fiori Elements V2 List Report / Object Page apps.",
+  "main": "src/nova/copilot/library.js",
+  "ui5": {
+    "dependencies": []
+  },
+  "devDependencies": {
+    "@ui5/cli": "^4.0.33"
+  }
+}

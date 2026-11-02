@@ -1,0 +1,23 @@
+{
+  "name": "nova-copilot-cap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reusable CAP service (NovaService) backing the nova-copilot AI dock - install into any Fiori Elements V2 app's own srv/, with its own AI Core credentials.",
+  "main": "cds-plugin.js",
+  "files": [
+    "cds-plugin.js",
+    "srv"
+  ],
+  "cds": {
+    "requires": {
+      "nova": {
+        "model": "nova-copilot-cap/srv/nova-service"
+      }
+    }
+  },
+  "dependencies": {
+    "@sap-ai-sdk/orchestration": "^2",
+    "@sap/cds": "^10",
+    "pdf-parse": "^2.4.5"
+  }
+}

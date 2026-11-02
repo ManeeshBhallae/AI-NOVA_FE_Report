@@ -1,0 +1,16 @@
+specVersion: "4.0"
+metadata:
+  name: nova.copilot
+type: library
+framework:
+  name: SAPUI5
+  version: "1.153.0"
+  libraries:
+    - name: sap.ui.core
+    - name: sap.m
+    - name: sap.f
+    - name: sap.ui.comp
+    - name: sap.ui.generic.app
+    - name: sap.suite.ui.generic.template
+    - name: sap.viz
+    - name: sap.ui.unified

@@ -1,0 +1,9 @@
+{
+  "name": "nova-copilot-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One-command installer: vendors the Nova Copilot AI dock + CAP service directly into a Fiori Elements V2 app's own webapp/srv folders.",
+  "bin": {
+    "nova-copilot": "./install.js"
+  }
+}

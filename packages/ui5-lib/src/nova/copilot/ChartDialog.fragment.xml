@@ -1,0 +1,19 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core">
+    <Dialog
+        id="novaChartDialog"
+        title="{aiChat>/chartTitle}"
+        contentWidth="46rem"
+        contentHeight="25.5rem"
+        resizable="true"
+        draggable="true"
+        afterClose="onChartDialogClose">
+        <content>
+            <VBox id="novaChartHost" width="100%" class="novaChartHost" />
+        </content>
+        <endButton>
+            <Button id="novaChartCloseButton" text="Close" press="onChartDialogClose" />
+        </endButton>
+    </Dialog>
+</core:FragmentDefinition>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<library xmlns="http://www.sap.com/sap.ui.library.xsd">
+	<name>nova.copilot</name>
+	<vendor>Nova Copilot</vendor>
+	<version>0.1.0</version>
+	<copyright>Nova Copilot</copyright>
+	<title>Nova Copilot</title>
+	<documentation>Reusable AI chat/chart/document-fill dock for Fiori Elements V2 List Report / Object Page apps.</documentation>
+	<dependencies>
+		<dependency>
+			<libraryName>sap.ui.core</libraryName>
+		</dependency>
+		<dependency>
+			<libraryName>sap.m</libraryName>
+		</dependency>
+		<dependency>
+			<libraryName>sap.ui.comp</libraryName>
+		</dependency>
+		<dependency>
+			<libraryName>sap.ui.generic.app</libraryName>
+		</dependency>
+		<dependency>
+			<libraryName>sap.suite.ui.generic.template</libraryName>
+		</dependency>
+		<dependency>
+			<libraryName>sap.viz</libraryName>
+		</dependency>
+		<dependency>
+			<libraryName>sap.ui.unified</libraryName>
+		</dependency>
+	</dependencies>
+</library>

@@ -1,0 +1,9 @@
+{
+  "name": "nova-copilot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reusable AI copilot (chat + chart + document fill) for SAP Fiori Elements V2 List Report / Object Page apps.",
+  "workspaces": [
+    "packages/*"
+  ]
+}
