@@ -20,11 +20,10 @@
  *     riskier than getting it from the tool that already knows how
  *   - adds the before-all build hook mbt needs to actually produce gen/srv
  *   - writes NOVA_AI_DESTINATION onto that module as a deploy-time property
- *
- * It does NOT wire the production /nova route (the "srv-api" destination
- * in the destination-content module) - that one varies enough by existing
- * mta.yaml shape that it's safer done by hand; see the README for the
- * exact block to add (same one used on ai_report).
+ *   - wires a "srv-api" destination into the destination-content module
+ *     (pointing at ~{srv-api/srv-url}) and the matching /nova route into
+ *     xs-app.json, so the deployed app can actually route chat calls to
+ *     this backend in production
  *
  * Usage: node prepare-cf.js [path-to-target-app] [--destination <name>]
  */
@@ -116,12 +115,8 @@ async function main() {
     ensureBackendModule(targetRoot);
     lib.ensureBuildHook(targetRoot);
     lib.setAiDestinationProperty(targetRoot, destinationName);
-
-    console.log("\nNOT done automatically - do this by hand (varies too much by existing mta.yaml to template");
-    console.log("safely): wire a \"srv-api\" destination into your destination-content module's own");
-    console.log("destinations list (pointing at ~{srv-api/srv-url}) and its requires list, so the deployed");
-    console.log("app can actually route /nova to this backend in production. See the README for the exact");
-    console.log("block - it's the same one used on ai_report.");
+    lib.ensureSrvApiDestination(targetRoot, appId);
+    lib.ensureXsAppRoute(targetRoot);
 
     console.log("\nDone. Next steps:");
     console.log("  1. npm install                 (if install.js reported new dependencies above)");

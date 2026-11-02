@@ -415,6 +415,139 @@ function setAiDestinationProperty(targetRoot, destinationName) {
     console.log("  set NOVA_AI_DESTINATION: " + destinationName + " on module \"" + block.name + "\"");
 }
 
+/** First line index, from `startIdx` (exclusive) within `endIdx`, that dedents below `indentLen` - i.e. the end of a list that started at `startIdx`. */
+function findListEnd(lines, startIdx, indentLen, endIdx) {
+    for (let i = startIdx + 1; i < endIdx; i++) {
+        if (lines[i].trim() === "") {
+            continue;
+        }
+        const indent = (lines[i].match(/^( *)/) || ["", ""])[1].length;
+        if (indent < indentLen) {
+            return i;
+        }
+    }
+    return endIdx;
+}
+
+/**
+ * Wires a "srv-api" destination into the destination-content module (found
+ * by its own "destinations:" list, same technique as findModuleBlock - the
+ * module's actual name varies per app) so the deployed app can route /nova
+ * to the backend module in production. Mirrors exactly what the backend
+ * module's "provides: srv-api" already exposes.
+ *
+ * Two independent read-modify-write passes (requires: list, then
+ * destinations: list) rather than one, so an insertion earlier in the file
+ * never invalidates line indices computed for a later one.
+ */
+function ensureSrvApiDestination(targetRoot, appId) {
+    const mtaPath = path.join(targetRoot, "mta.yaml");
+
+    function findDestinationContentBlock(lines) {
+        return findModuleBlock(lines, (blockLines) =>
+            blockLines.some((l) => /^\s*type:\s*com\.sap\.application\.content\s*$/.test(l)) &&
+            blockLines.some((l) => /^\s*destinations:\s*$/.test(l)));
+    }
+
+    // pass 1: requires:
+    let lines = fs.readFileSync(mtaPath, "utf8").split("\n");
+    let block = findDestinationContentBlock(lines);
+    if (!block) {
+        console.log("  no destination-content module (one with a destinations: list) found in mta.yaml -");
+        console.log("  skipping the srv-api route; wire it in by hand, see the README");
+        return;
+    }
+
+    const alreadyHasRequire = lines.slice(block.start, block.end)
+        .some((l) => /^\s*- name:\s*srv-api\s*$/.test(l));
+    if (!alreadyHasRequire) {
+        const requiresIdx = lines.slice(block.start, block.end)
+            .findIndex((l) => /^\s*requires:\s*$/.test(l));
+        if (requiresIdx !== -1) {
+            const absIdx = block.start + requiresIdx;
+            const requiresIndent = lines[absIdx].match(/^(\s*)/)[1];
+            const itemIndent = requiresIndent + "  ";
+            const subIndent = itemIndent + "  ";
+            const insertAt = findListEnd(lines, absIdx, itemIndent.length, block.end);
+            lines.splice(insertAt, 0,
+                itemIndent + "- name: srv-api",
+                subIndent + "parameters:",
+                subIndent + "  content-target: true");
+            fs.writeFileSync(mtaPath, lines.join("\n"));
+            console.log("  added srv-api to the destination-content module's requires: list");
+        }
+    } else {
+        console.log("  destination-content module already requires srv-api - left as is");
+    }
+
+    // pass 2: destinations: - re-read fresh, the file just changed above
+    lines = fs.readFileSync(mtaPath, "utf8").split("\n");
+    block = findDestinationContentBlock(lines);
+
+    const alreadyHasDestination = lines.slice(block.start, block.end)
+        .some((l) => /Name:\s*srv-api\s*$/.test(l));
+    if (alreadyHasDestination) {
+        console.log("  destination-content module already declares the srv-api destination - left as is");
+        return;
+    }
+
+    const destIdx = lines.slice(block.start, block.end).findIndex((l) => /^\s*destinations:\s*$/.test(l));
+    if (destIdx === -1) {
+        console.log("  could not find a destinations: list in the destination-content module - add srv-api by hand");
+        return;
+    }
+    const absDestIdx = block.start + destIdx;
+    const destIndent = lines[absDestIdx].match(/^(\s*)/)[1];
+    const itemIndent = destIndent + "  ";
+    const valIndent = itemIndent + "  ";
+    const insertAt = findListEnd(lines, absDestIdx, itemIndent.length, block.end);
+    lines.splice(insertAt, 0,
+        itemIndent + "- Name: srv-api",
+        valIndent + "URL: ~{srv-api/srv-url}",
+        valIndent + "Authentication: NoAuthentication",
+        valIndent + "HTML5.ForwardAuthToken: true",
+        valIndent + "ProxyType: Internet",
+        valIndent + "Type: HTTP",
+        valIndent + "sap.cloud.service: " + appId);
+    fs.writeFileSync(mtaPath, lines.join("\n"));
+    console.log("  added the srv-api destination (pointing at ~{srv-api/srv-url}) to the destination-content module");
+}
+
+/**
+ * Adds the production /nova route to xs-app.json, so the managed approuter
+ * actually forwards chat calls to the srv-api destination above - the
+ * production equivalent of patchUi5YamlBackends' local dev-server proxy.
+ * Plain JSON, so this is a real parse/modify/write, not text surgery -
+ * inserted before the last route (the SAP Fiori generator convention is a
+ * catch-all "^(.*)$" route last; this keeps it last).
+ */
+function ensureXsAppRoute(targetRoot) {
+    const xsAppPath = path.join(targetRoot, "xs-app.json");
+    if (!fs.existsSync(xsAppPath)) {
+        console.log("  no xs-app.json found - skipping the production /nova route");
+        return;
+    }
+    const xsApp = readJson(xsAppPath);
+    const routes = xsApp.routes || (xsApp.routes = []);
+
+    if (routes.some((r) => r.destination === "srv-api")) {
+        console.log("  xs-app.json already routes to srv-api - left as is");
+        return;
+    }
+
+    const novaRoute = {
+        source: "^/nova/(.*)$",
+        target: "/nova/$1",
+        authenticationType: "xsuaa",
+        csrfProtection: false,
+        destination: "srv-api"
+    };
+    const insertAt = routes.length > 0 ? routes.length - 1 : 0;
+    routes.splice(insertAt, 0, novaRoute);
+    writeJson(xsAppPath, xsApp);
+    console.log("  added the /nova route to xs-app.json");
+}
+
 module.exports = {
     fail,
     readJson,
@@ -429,5 +562,7 @@ module.exports = {
     runInstall,
     findModuleBlock,
     ensureBuildHook,
-    setAiDestinationProperty
+    setAiDestinationProperty,
+    ensureSrvApiDestination,
+    ensureXsAppRoute
 };

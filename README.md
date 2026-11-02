@@ -83,31 +83,17 @@ If `mta.yaml` exists, it:
 5. Writes `NOVA_AI_DESTINATION: <name>` as a property on that backend
    module in `mta.yaml` (updates it in place on a re-run with a different
    name, rather than duplicating).
+6. Wires a `srv-api` destination into the destination-content module
+   (pointing at `~{srv-api/srv-url}` - resolves to wherever the backend
+   module actually gets deployed) and adds the matching `/nova` route to
+   `xs-app.json`, so the deployed app can actually route chat calls to this
+   backend in production. Both idempotent - re-running updates nothing if
+   they're already there.
 
-**Not automated** - do this by hand, it varies too much by existing
-`mta.yaml` shape to template safely: wiring a `srv-api` destination into
-your destination-content module (pointing at `~{srv-api/srv-url}`), so the
-deployed app can actually route `/nova` to this backend in production. The
-block to add (verified working on `ai_report`):
-
-```yaml
-# in the destination-content module's own requires: list
-- name: srv-api
-  parameters:
-    content-target: true
-# and in that same module's destinations: list
-- Name: srv-api
-  URL: ~{srv-api/srv-url}
-  Authentication: NoAuthentication
-  HTML5.ForwardAuthToken: true
-  ProxyType: Internet
-  Type: HTTP
-  sap.cloud.service: <your app id>
-```
-
-This only covers the AI Core credential path. It does **not** cover routing
-(e.g. an approuter's `/nova` route forwarding to the deployed backend) -
-that's a separate piece of your deployment config.
+That's the whole production-config side of things - 4 steps end to end:
+`install.js` (or skip straight to `prepare-cf.js`, which does the same
+install first) → fill in the destination name → `npm run build:mta` →
+`cf deploy`.
 
 ### After installing
 
