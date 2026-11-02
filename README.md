@@ -47,6 +47,31 @@ Re-running the installer against an app that already has it refreshes the
 `webapp/ext/novaCopilot/*` files (treat that folder as generated - don't
 hand-edit it) and leaves `srv/*` alone if those files already exist.
 
+### AI Core credentials - local vs. production
+
+One code path, picked at runtime, not two separate installs:
+
+- **Local dev**: `AICORE_SERVICE_KEY` in `.env` (the SDK's own default
+  fallback). Always available, regardless of deploy config.
+- **Production**: set `NOVA_AI_DESTINATION=<destination name>` instead - the
+  service then looks up that BTP destination. This only resolves if the app
+  is bound to a destination service instance, which requires CF deploy
+  config to exist first. The installer detects this (checking for
+  `mta.yaml` and a `nodejs` module in it) and tells you exactly what's
+  missing:
+  - no `mta.yaml` → destination-based config isn't reachable yet; run
+    `fiori add deploy-config` first.
+  - `mta.yaml` but no backend module → run `npx cds add destination` (not
+    `cds add ai`, which scaffolds a direct service binding instead and
+    isn't what `NOVA_AI_DESTINATION` uses). This adds both the CAP backend
+    deployment module and a destination-service binding for it.
+  - backend module already present → just create the actual AI Core
+    destination in BTP and set `NOVA_AI_DESTINATION` to its name.
+
+This only covers the AI Core credential path. It does **not** cover routing
+(e.g. an approuter's `/nova` route forwarding to the deployed backend) -
+that's a separate piece of your deployment config.
+
 ### After installing
 
 1. `npm install` (only needed if the installer added new dependencies).

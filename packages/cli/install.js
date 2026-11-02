@@ -306,15 +306,28 @@ function main() {
     // bound to a destination service instance - which only exists once it
     // has CF deploy config. mta.yaml's presence is the simplest signal of
     // that; offering destination-based config without it would be a dead end.
-    const hasDeployConfig = fs.existsSync(path.join(targetRoot, "mta.yaml"));
+    const mtaPath = path.join(targetRoot, "mta.yaml");
+    const hasDeployConfig = fs.existsSync(mtaPath);
+    // `cds add ai` scaffolds a DIRECT service binding (service: aicore) -
+    // the opposite of what NOVA_AI_DESTINATION expects. `cds add destination`
+    // is the one that adds both the CAP backend module (if missing) and a
+    // destination-service binding for it - verified by running it.
+    const hasBackendModule = hasDeployConfig && /type:\s*nodejs/.test(fs.readFileSync(mtaPath, "utf8"));
 
     console.log("\nAI Core credentials - two ways to supply them, same code either way:");
     console.log("  - Local dev: cp .env.example .env, fill in AICORE_SERVICE_KEY.");
-    if (hasDeployConfig) {
-        console.log("  - Production: this app has CF deploy config (mta.yaml found), so a BTP");
-        console.log("    destination works too - set NOVA_AI_DESTINATION=<destination name> instead");
-        console.log("    (needs a destination service instance bound in mta.yaml, and the actual");
-        console.log("    destination created in BTP pointing at your AI Core instance).");
+    if (hasDeployConfig && hasBackendModule) {
+        console.log("  - Production: this app already deploys a backend module, so a BTP destination");
+        console.log("    works too - set NOVA_AI_DESTINATION=<destination name> in its CF environment,");
+        console.log("    once that destination exists in BTP pointing at your AI Core instance.");
+    } else if (hasDeployConfig) {
+        console.log("  - Production: this app has CF deploy config but no backend module yet to run");
+        console.log("    NovaService in, and nothing bound to resolve a destination by name. Run:");
+        console.log("      npx cds add destination");
+        console.log("    (NOT `cds add ai` - that scaffolds a direct service binding instead, which");
+        console.log("    NOVA_AI_DESTINATION does not use). This adds the backend module and a");
+        console.log("    destination-service binding for it; create the actual AI Core destination in");
+        console.log("    BTP afterwards and set NOVA_AI_DESTINATION to its name.");
     } else {
         console.log("  - Production / destination-based config isn't available yet - this app has");
         console.log("    no mta.yaml (no CF deploy config), so there is nothing to bind a destination");
