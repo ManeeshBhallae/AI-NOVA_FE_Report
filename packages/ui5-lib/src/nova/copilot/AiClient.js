@@ -8,9 +8,58 @@ sap.ui.define([
     var NOVA_ASK_URL = "/nova/ask";
     var NOVA_EXTRACT_URL = "/nova/extractFields";
     var NOVA_PDF_URL = "/nova/extractPdfText";
+    // any URL under /nova works for fetching a token - $metadata always exists
+    var NOVA_TOKEN_URL = "/nova/$metadata";
+
+    // UI5's own ODataModel fetches and attaches CSRF tokens automatically;
+    // these are plain fetch() calls, so that has to be done by hand here.
+    // Locally (mocked auth), the service never asks for one and this just
+    // stays null - every header below becomes a harmless no-op. In
+    // production it is fetched once, cached, and only re-fetched if the
+    // service reports the cached one stale.
+    var sCsrfToken = null;
+
+    function fetchCsrfToken() {
+        return fetch(NOVA_TOKEN_URL, {
+            method: "GET",
+            headers: { "X-CSRF-Token": "Fetch" }
+        }).then(function (oResponse) {
+            sCsrfToken = oResponse.headers.get("x-csrf-token") || sCsrfToken;
+            return sCsrfToken;
+        }).catch(function () {
+            return null;
+        });
+    }
+
+    /**
+     * Runs a POST, fetching a CSRF token first if none is cached yet, and
+     * retrying exactly once with a fresh token if the service rejects the
+     * attempt as needing one (the standard SAP signal: a 403 carrying an
+     * "x-csrf-token: Required" response header) - covers both "never fetched
+     * one" and "the cached one went stale" without the caller knowing which.
+     */
+    function postWithCsrf(sUrl, oInit, bRetried) {
+        var oTokenPromise = sCsrfToken ? Promise.resolve(sCsrfToken) : fetchCsrfToken();
+        return oTokenPromise.then(function (sToken) {
+            oInit.headers = oInit.headers || {};
+            if (sToken) {
+                oInit.headers["X-CSRF-Token"] = sToken;
+            }
+            return fetch(sUrl, oInit);
+        }).then(function (oResponse) {
+            var sNeedsToken = oResponse.headers.get("x-csrf-token");
+            if (oResponse.status === 403 && !bRetried &&
+                    sNeedsToken && /required/i.test(sNeedsToken)) {
+                Logger.warn("AiClient", "CSRF token was rejected - fetching a fresh one and retrying once");
+                sCsrfToken = null;
+                return postWithCsrf(sUrl, oInit, true);
+            }
+            return oResponse;
+        });
+    }
 
     function postJson(sUrl, oBody) {
-        return fetch(sUrl, {
+        return postWithCsrf(sUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(oBody)
@@ -46,7 +95,7 @@ sap.ui.define([
          */
         extractPdfText: function (sBase64) {
             Logger.step("AiClient", "POST " + NOVA_PDF_URL, { base64Chars: sBase64.length });
-            return fetch(NOVA_PDF_URL, {
+            return postWithCsrf(NOVA_PDF_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content: sBase64 })
@@ -108,7 +157,7 @@ sap.ui.define([
 
             var iStart = Date.now();
 
-            return fetch(NOVA_ASK_URL, {
+            return postWithCsrf(NOVA_ASK_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: sPayload
