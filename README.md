@@ -99,12 +99,21 @@ If `mta.yaml` exists, it:
    successfully, so `srv-api` goes there too - a resource requiring a
    module's output inverts the usual direction, but it deploys correctly.
 
-   Separately, if your org's CF memory quota is tight, you may also need
-   to add `parameters: { memory: 256M, disk-quota: 512M }` (or whatever
-   fits) to the backend module by hand - the default Node buildpack asks
-   for 1024M, which can fail staging with "organization's memory limit
-   exceeded" on a constrained space. Not automated, since the right value
-   depends on your quota.
+7. Binds the backend module to the xsuaa resource, if one exists and isn't
+   bound already. Without it: `install.js`'s `patchPackageJson` always sets
+   `cds.requires.auth.[production].kind: "xsuaa"`, CF sets
+   `NODE_ENV=production` automatically, so CAP tries to initialize xsuaa
+   auth at boot and finds no bound credentials - the app crashes
+   immediately on start ("Some instances have crashed", no further detail
+   without pulling `cf logs <app> --recent`). Found the same way as the
+   `srv-api` fix: by an actual deploy crashing at this exact step.
+
+Separately, if your org's CF memory quota is tight, you may also need to
+add `parameters: { memory: 256M, disk-quota: 512M }` (or whatever fits) to
+the backend module by hand - the default Node buildpack asks for 1024M,
+which can fail staging with "organization's memory limit exceeded" on a
+constrained space. Not automated, since the right value depends on your
+quota.
 
 That's the whole production-config side of things - 4 steps end to end:
 `install.js` (or skip straight to `prepare-cf.js`, which does the same

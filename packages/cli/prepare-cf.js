@@ -26,6 +26,11 @@
  *     chat calls to this backend in production - see ensureSrvApiDestination
  *     in lib.js for why it's the service resource and not the more obvious
  *     destination-content module
+ *   - binds the backend module to the xsuaa resource, if missing - without
+ *     it the app crashes immediately on start in production (CF sets
+ *     NODE_ENV=production, and cds.requires.auth.[production].kind is
+ *     always "xsuaa" after install.js's package.json patch, so CAP tries
+ *     to init xsuaa auth at boot and finds no bound credentials)
  *
  * Usage: node prepare-cf.js [path-to-target-app] [--destination <name>]
  */
@@ -118,6 +123,7 @@ async function main() {
     lib.ensureBuildHook(targetRoot);
     lib.setAiDestinationProperty(targetRoot, destinationName);
     lib.ensureSrvApiDestination(targetRoot);
+    lib.ensureXsuaaBinding(targetRoot);
     lib.ensureXsAppRoute(targetRoot);
 
     console.log("\nDone. Next steps:");

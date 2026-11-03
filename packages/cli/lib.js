@@ -531,6 +531,52 @@ function ensureSrvApiDestination(targetRoot) {
 }
 
 /**
+ * Binds the backend (nodejs) module to the xsuaa resource, if one exists
+ * and it isn't bound already. patchPackageJson always sets
+ * cds.requires.auth.[production].kind: "xsuaa" - CF sets NODE_ENV=production
+ * automatically, so without this binding CAP tries to initialize xsuaa auth
+ * at boot, finds no xsuaa credentials in VCAP_SERVICES, and the app crashes
+ * immediately on start ("Some instances have crashed", no further detail
+ * without pulling `cf logs`). Confirmed by an actual deploy on ai_report -
+ * `cds add destination` does not add this binding on its own.
+ */
+function ensureXsuaaBinding(targetRoot) {
+    const mtaPath = path.join(targetRoot, "mta.yaml");
+    const lines = fs.readFileSync(mtaPath, "utf8").split("\n");
+
+    const backend = findModuleBlock(lines, (blockLines) => blockLines.some((l) => /^\s*type:\s*nodejs\s*$/.test(l)));
+    if (!backend) {
+        console.log("  no backend (type: nodejs) module found - skipping the xsuaa binding");
+        return;
+    }
+    const xsuaa = findModuleBlock(lines, (blockLines) => blockLines.some((l) => /^\s*service:\s*xsuaa\s*$/.test(l)));
+    if (!xsuaa) {
+        console.log("  no xsuaa resource found in mta.yaml - skipping the binding (auth may fail at boot if");
+        console.log("  cds.requires.auth.[production].kind is \"xsuaa\" in package.json)");
+        return;
+    }
+
+    const alreadyBound = lines.slice(backend.start, backend.end)
+        .some((l) => new RegExp("^\\s*- name:\\s*" + xsuaa.name + "\\s*$").test(l));
+    if (alreadyBound) {
+        console.log("  backend module already requires the xsuaa resource \"" + xsuaa.name + "\" - left as is");
+        return;
+    }
+
+    const requiresIdx = lines.slice(backend.start, backend.end).findIndex((l) => /^\s*requires:\s*$/.test(l));
+    if (requiresIdx === -1) {
+        console.log("  backend module has no requires: list - skipping the xsuaa binding, add it by hand");
+        return;
+    }
+    const absIdx = backend.start + requiresIdx;
+    const itemIndent = lines[absIdx].match(/^(\s*)/)[1] + "  ";
+    const insertAt = findListEnd(lines, absIdx, itemIndent.length, backend.end);
+    lines.splice(insertAt, 0, itemIndent + "- name: " + xsuaa.name);
+    fs.writeFileSync(mtaPath, lines.join("\n"));
+    console.log("  bound the backend module to the xsuaa resource \"" + xsuaa.name + "\"");
+}
+
+/**
  * Adds the production /nova route to xs-app.json, so the managed approuter
  * actually forwards chat calls to the srv-api destination above - the
  * production equivalent of patchUi5YamlBackends' local dev-server proxy.
@@ -581,5 +627,6 @@ module.exports = {
     ensureBuildHook,
     setAiDestinationProperty,
     ensureSrvApiDestination,
+    ensureXsuaaBinding,
     ensureXsAppRoute
 };
