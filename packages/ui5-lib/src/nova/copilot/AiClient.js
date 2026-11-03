@@ -3,13 +3,28 @@ sap.ui.define([
 ], function (Logger) {
     "use strict";
 
+    // Resolved relative to THIS module's own deployed location, the same way
+    // sap.ui.model.odata.v2.ODataModel resolves a manifest dataSource URI -
+    // NOT a literal browser-absolute path. The two give the same answer for
+    // a standalone deploy, but diverge the moment the app runs embedded
+    // somewhere that serves it under its own path prefix (e.g. SAP Build
+    // Work Zone, which mounts each app under a long per-registration path).
+    // A hardcoded fetch("/nova/ask") misses that prefix entirely and 404s;
+    // this does not, because it is computed the same way the dock's own
+    // CSS/i18n bundle already is (see ChatMixin.js) - and those are
+    // confirmed to load correctly inside Work Zone.
+    // normalized to exactly one trailing slash - toUrl()'s handling of a
+    // trailing "/" in the argument isn't something to bet string
+    // concatenation on
+    var NOVA_BASE = sap.ui.require.toUrl("nova/copilot/../../").replace(/\/*$/, "/");
+
     // The Nova CAP service owns the AI Core credentials, the system prompt and
     // the orchestration request shape. The app only sends a question + context.
-    var NOVA_ASK_URL = "/nova/ask";
-    var NOVA_EXTRACT_URL = "/nova/extractFields";
-    var NOVA_PDF_URL = "/nova/extractPdfText";
+    var NOVA_ASK_URL = NOVA_BASE + "nova/ask";
+    var NOVA_EXTRACT_URL = NOVA_BASE + "nova/extractFields";
+    var NOVA_PDF_URL = NOVA_BASE + "nova/extractPdfText";
     // any URL under /nova works for fetching a token - $metadata always exists
-    var NOVA_TOKEN_URL = "/nova/$metadata";
+    var NOVA_TOKEN_URL = NOVA_BASE + "nova/$metadata";
 
     // UI5's own ODataModel fetches and attaches CSRF tokens automatically;
     // these are plain fetch() calls, so that has to be done by hand here.
