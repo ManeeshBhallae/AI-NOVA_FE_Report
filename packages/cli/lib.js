@@ -430,77 +430,88 @@ function findListEnd(lines, startIdx, indentLen, endIdx) {
 }
 
 /**
- * Wires a "srv-api" destination into the destination-content module (found
- * by its own "destinations:" list, same technique as findModuleBlock - the
- * module's actual name varies per app) so the deployed app can route /nova
- * to the backend module in production. Mirrors exactly what the backend
- * module's "provides: srv-api" already exposes.
+ * Wires a "srv-api" destination into the destination-SERVICE resource's own
+ * init_data (found by having "service: destination" + "init_data:" - the
+ * resource's actual name varies per app, e.g. "aireport-destination-service")
+ * so the deployed app can route /nova to the backend module in production.
  *
- * Deliberately does NOT add a "sap.cloud.service" tag - found by an actual
- * failed deploy on ai_report. That tag is only valid alongside
- * ServiceInstanceName/ServiceKeyName (destinations backed by a real bound
- * service instance, like aireport_auth); adding it to a plain external-URL
- * or MTA-placeholder-URL destination makes the content deployer reject it
- * with "Missing destination property [ServiceInstanceName]".
+ * Deliberately NOT in the separate destination-content module, despite that
+ * seeming the more obvious place - a real deploy on ai_report proved that
+ * mechanism rejects any destination lacking ServiceInstanceName (confirmed
+ * twice, on two different destinations), while this exact shape (a plain
+ * NoAuthentication entry inside a resource's own init_data) deploys
+ * successfully - it's where the pre-existing "ui5" destination already
+ * lives and works.
  *
- * Two independent read-modify-write passes (requires: list, then
+ * The resource needs its own "requires: srv-api" (the backend module's
+ * provided dependency) for the ~{srv-api/srv-url} placeholder inside its
+ * init_data to resolve at deploy time - a resource requiring a module,
+ * which inverts the usual module-requires-resource direction but was
+ * confirmed to actually deploy correctly.
+ *
+ * Two independent read-modify-write passes (requires:, then init_data's
  * destinations: list) rather than one, so an insertion earlier in the file
  * never invalidates line indices computed for a later one.
  */
 function ensureSrvApiDestination(targetRoot) {
     const mtaPath = path.join(targetRoot, "mta.yaml");
 
-    function findDestinationContentBlock(lines) {
+    function findDestinationServiceBlock(lines) {
         return findModuleBlock(lines, (blockLines) =>
-            blockLines.some((l) => /^\s*type:\s*com\.sap\.application\.content\s*$/.test(l)) &&
-            blockLines.some((l) => /^\s*destinations:\s*$/.test(l)));
+            blockLines.some((l) => /^\s*service:\s*destination\s*$/.test(l)) &&
+            blockLines.some((l) => /^\s*init_data:\s*$/.test(l)));
     }
 
-    // pass 1: requires:
+    // pass 1: requires: srv-api (resources don't have one by default)
     let lines = fs.readFileSync(mtaPath, "utf8").split("\n");
-    let block = findDestinationContentBlock(lines);
+    let block = findDestinationServiceBlock(lines);
     if (!block) {
-        console.log("  no destination-content module (one with a destinations: list) found in mta.yaml -");
-        console.log("  skipping the srv-api route; wire it in by hand, see the README");
+        console.log("  no destination-service resource (one with service: destination + init_data) found");
+        console.log("  in mta.yaml - skipping the srv-api route; wire it in by hand, see the README");
         return;
     }
 
     const alreadyHasRequire = lines.slice(block.start, block.end)
         .some((l) => /^\s*- name:\s*srv-api\s*$/.test(l));
     if (!alreadyHasRequire) {
-        const requiresIdx = lines.slice(block.start, block.end)
-            .findIndex((l) => /^\s*requires:\s*$/.test(l));
+        const requiresIdx = lines.slice(block.start, block.end).findIndex((l) => /^\s*requires:\s*$/.test(l));
         if (requiresIdx !== -1) {
             const absIdx = block.start + requiresIdx;
             const requiresIndent = lines[absIdx].match(/^(\s*)/)[1];
             const itemIndent = requiresIndent + "  ";
-            const subIndent = itemIndent + "  ";
             const insertAt = findListEnd(lines, absIdx, itemIndent.length, block.end);
-            lines.splice(insertAt, 0,
-                itemIndent + "- name: srv-api",
-                subIndent + "parameters:",
-                subIndent + "  content-target: true");
-            fs.writeFileSync(mtaPath, lines.join("\n"));
-            console.log("  added srv-api to the destination-content module's requires: list");
+            lines.splice(insertAt, 0, itemIndent + "- name: srv-api");
+        } else {
+            const typeIdx = lines.slice(block.start, block.end).findIndex((l) => /^\s*type:/.test(l));
+            if (typeIdx === -1) {
+                console.log("  destination-service resource has no \"type:\" line - skipping, add srv-api by hand");
+                return;
+            }
+            const absTypeIdx = block.start + typeIdx;
+            const requiresIndent = block.indent + "  ";
+            const itemIndent = requiresIndent + "  ";
+            lines.splice(absTypeIdx + 1, 0, requiresIndent + "requires:", itemIndent + "- name: srv-api");
         }
+        fs.writeFileSync(mtaPath, lines.join("\n"));
+        console.log("  added requires: srv-api to the destination-service resource");
     } else {
-        console.log("  destination-content module already requires srv-api - left as is");
+        console.log("  destination-service resource already requires srv-api - left as is");
     }
 
-    // pass 2: destinations: - re-read fresh, the file just changed above
+    // pass 2: the destination entry itself, inside init_data's destinations: list
     lines = fs.readFileSync(mtaPath, "utf8").split("\n");
-    block = findDestinationContentBlock(lines);
+    block = findDestinationServiceBlock(lines);
 
     const alreadyHasDestination = lines.slice(block.start, block.end)
         .some((l) => /Name:\s*srv-api\s*$/.test(l));
     if (alreadyHasDestination) {
-        console.log("  destination-content module already declares the srv-api destination - left as is");
+        console.log("  destination-service resource's init_data already declares srv-api - left as is");
         return;
     }
 
     const destIdx = lines.slice(block.start, block.end).findIndex((l) => /^\s*destinations:\s*$/.test(l));
     if (destIdx === -1) {
-        console.log("  could not find a destinations: list in the destination-content module - add srv-api by hand");
+        console.log("  could not find a destinations: list under init_data - add srv-api by hand");
         return;
     }
     const absDestIdx = block.start + destIdx;
@@ -509,14 +520,14 @@ function ensureSrvApiDestination(targetRoot) {
     const valIndent = itemIndent + "  ";
     const insertAt = findListEnd(lines, absDestIdx, itemIndent.length, block.end);
     lines.splice(insertAt, 0,
-        itemIndent + "- Name: srv-api",
-        valIndent + "URL: ~{srv-api/srv-url}",
-        valIndent + "Authentication: NoAuthentication",
+        itemIndent + "- Authentication: NoAuthentication",
         valIndent + "HTML5.ForwardAuthToken: true",
+        valIndent + "Name: srv-api",
         valIndent + "ProxyType: Internet",
-        valIndent + "Type: HTTP");
+        valIndent + "Type: HTTP",
+        valIndent + "URL: ~{srv-api/srv-url}");
     fs.writeFileSync(mtaPath, lines.join("\n"));
-    console.log("  added the srv-api destination (pointing at ~{srv-api/srv-url}) to the destination-content module");
+    console.log("  added the srv-api destination (pointing at ~{srv-api/srv-url}) to the destination-service resource's init_data");
 }
 
 /**

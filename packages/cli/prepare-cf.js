@@ -20,10 +20,12 @@
  *     riskier than getting it from the tool that already knows how
  *   - adds the before-all build hook mbt needs to actually produce gen/srv
  *   - writes NOVA_AI_DESTINATION onto that module as a deploy-time property
- *   - wires a "srv-api" destination into the destination-content module
- *     (pointing at ~{srv-api/srv-url}) and the matching /nova route into
- *     xs-app.json, so the deployed app can actually route chat calls to
- *     this backend in production
+ *   - wires a "srv-api" destination into the destination-SERVICE resource's
+ *     own init_data (pointing at ~{srv-api/srv-url}) and the matching
+ *     /nova route into xs-app.json, so the deployed app can actually route
+ *     chat calls to this backend in production - see ensureSrvApiDestination
+ *     in lib.js for why it's the service resource and not the more obvious
+ *     destination-content module
  *
  * Usage: node prepare-cf.js [path-to-target-app] [--destination <name>]
  */

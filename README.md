@@ -83,12 +83,28 @@ If `mta.yaml` exists, it:
 5. Writes `NOVA_AI_DESTINATION: <name>` as a property on that backend
    module in `mta.yaml` (updates it in place on a re-run with a different
    name, rather than duplicating).
-6. Wires a `srv-api` destination into the destination-content module
-   (pointing at `~{srv-api/srv-url}` - resolves to wherever the backend
-   module actually gets deployed) and adds the matching `/nova` route to
-   `xs-app.json`, so the deployed app can actually route chat calls to this
-   backend in production. Both idempotent - re-running updates nothing if
-   they're already there.
+6. Wires a `srv-api` destination into the destination-**service** resource's
+   own `init_data` (pointing at `~{srv-api/srv-url}` - resolves to wherever
+   the backend module actually gets deployed), with a `requires: srv-api`
+   added to that resource so the placeholder resolves, and adds the
+   matching `/nova` route to `xs-app.json`. Both idempotent.
+
+   Confirmed via a real `cf deploy` on `ai_report` - the separate
+   destination-**content** module (the more obvious place) actually
+   rejects any destination lacking `ServiceInstanceName`, even plain
+   external/placeholder-URL ones (`Missing destination property
+   [ServiceInstanceName]`, reproduced on two different destinations before
+   finding this). The destination-service resource's own `init_data` is
+   where the app's existing `ui5` destination already lived and deployed
+   successfully, so `srv-api` goes there too - a resource requiring a
+   module's output inverts the usual direction, but it deploys correctly.
+
+   Separately, if your org's CF memory quota is tight, you may also need
+   to add `parameters: { memory: 256M, disk-quota: 512M }` (or whatever
+   fits) to the backend module by hand - the default Node buildpack asks
+   for 1024M, which can fail staging with "organization's memory limit
+   exceeded" on a constrained space. Not automated, since the right value
+   depends on your quota.
 
 That's the whole production-config side of things - 4 steps end to end:
 `install.js` (or skip straight to `prepare-cf.js`, which does the same
