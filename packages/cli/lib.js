@@ -577,6 +577,54 @@ function ensureXsuaaBinding(targetRoot) {
 }
 
 /**
+ * Overrides the backend module's CF start command to "npx cds-serve",
+ * instead of letting the buildpack default to "npm start". Found by an
+ * actual deploy crash-looping with "fiori: not found", exit 127: in the
+ * common Fiori Tools layout, frontend and backend share ONE package.json,
+ * so `cds build` copies it wholesale into gen/srv/package.json - including
+ * its "start" script, which runs `fiori run ...` (the UI5 dev server, not
+ * installed in production and meaningless there anyway). "npx cds-serve"
+ * works regardless of what ends up in that copied package.json's scripts,
+ * since install.js's patchPackageJson always adds a real "start-srv": "cds-serve"
+ * script and the cds-serve binary itself ships with @sap/cds.
+ */
+function ensureStartCommand(targetRoot) {
+    const mtaPath = path.join(targetRoot, "mta.yaml");
+    const lines = fs.readFileSync(mtaPath, "utf8").split("\n");
+
+    const backend = findModuleBlock(lines, (blockLines) => blockLines.some((l) => /^\s*type:\s*nodejs\s*$/.test(l)));
+    if (!backend) {
+        console.log("  no backend (type: nodejs) module found - skipping the start command override");
+        return;
+    }
+
+    const alreadyHasCommand = lines.slice(backend.start, backend.end).some((l) => /^\s*command:/.test(l));
+    if (alreadyHasCommand) {
+        console.log("  backend module already has an explicit start command - left as is");
+        return;
+    }
+
+    const parametersIdx = lines.slice(backend.start, backend.end).findIndex((l) => /^\s*parameters:\s*$/.test(l));
+    if (parametersIdx !== -1) {
+        const absIdx = backend.start + parametersIdx;
+        const valueIndent = lines[absIdx].match(/^(\s*)/)[1] + "  ";
+        lines.splice(absIdx + 1, 0, valueIndent + "command: npx cds-serve");
+    } else {
+        const typeIdx = lines.slice(backend.start, backend.end).findIndex((l) => /^\s*type:/.test(l));
+        if (typeIdx === -1) {
+            console.log("  backend module has no \"type:\" line - skipping, add the start command by hand");
+            return;
+        }
+        const absTypeIdx = backend.start + typeIdx;
+        const parametersIndent = backend.indent + "  ";
+        const valueIndent = parametersIndent + "  ";
+        lines.splice(absTypeIdx + 1, 0, parametersIndent + "parameters:", valueIndent + "command: npx cds-serve");
+    }
+    fs.writeFileSync(mtaPath, lines.join("\n"));
+    console.log("  set the backend module's start command to \"npx cds-serve\"");
+}
+
+/**
  * Adds the production /nova route to xs-app.json, so the managed approuter
  * actually forwards chat calls to the srv-api destination above - the
  * production equivalent of patchUi5YamlBackends' local dev-server proxy.
@@ -628,5 +676,6 @@ module.exports = {
     setAiDestinationProperty,
     ensureSrvApiDestination,
     ensureXsuaaBinding,
+    ensureStartCommand,
     ensureXsAppRoute
 };

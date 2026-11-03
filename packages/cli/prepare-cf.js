@@ -31,6 +31,12 @@
  *     NODE_ENV=production, and cds.requires.auth.[production].kind is
  *     always "xsuaa" after install.js's package.json patch, so CAP tries
  *     to init xsuaa auth at boot and finds no bound credentials)
+ *   - overrides the backend module's CF start command to "npx cds-serve" -
+ *     in the common Fiori Tools layout (frontend + backend sharing one
+ *     package.json), `cds build` copies that whole file into the built
+ *     backend, "start" script included, so the buildpack's npm-start
+ *     default runs the UI5 dev server command instead ("fiori: not
+ *     found", exit 127, crash-looping) unless this is set explicitly
  *
  * Usage: node prepare-cf.js [path-to-target-app] [--destination <name>]
  */
@@ -124,6 +130,7 @@ async function main() {
     lib.setAiDestinationProperty(targetRoot, destinationName);
     lib.ensureSrvApiDestination(targetRoot);
     lib.ensureXsuaaBinding(targetRoot);
+    lib.ensureStartCommand(targetRoot);
     lib.ensureXsAppRoute(targetRoot);
 
     console.log("\nDone. Next steps:");

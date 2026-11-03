@@ -107,6 +107,14 @@ If `mta.yaml` exists, it:
    immediately on start ("Some instances have crashed", no further detail
    without pulling `cf logs <app> --recent`). Found the same way as the
    `srv-api` fix: by an actual deploy crashing at this exact step.
+8. Sets the backend module's CF start command to `npx cds-serve`
+   explicitly. In the common Fiori Tools layout (frontend and backend
+   sharing one `package.json`), `cds build` copies that whole file into
+   the built backend - `"start"` script included - so letting the
+   buildpack default to `npm start` runs the UI5 dev server command
+   instead (`fiori: not found`, exit 127, crash-looping forever). Found by
+   pulling `cf logs <app> --recent` after fix #7 resolved the previous
+   crash and a *new* one appeared.
 
 Separately, if your org's CF memory quota is tight, you may also need to
 add `parameters: { memory: 256M, disk-quota: 512M }` (or whatever fits) to
