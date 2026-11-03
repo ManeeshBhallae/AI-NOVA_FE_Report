@@ -115,7 +115,7 @@ async function main() {
     ensureBackendModule(targetRoot);
     lib.ensureBuildHook(targetRoot);
     lib.setAiDestinationProperty(targetRoot, destinationName);
-    lib.ensureSrvApiDestination(targetRoot, appId);
+    lib.ensureSrvApiDestination(targetRoot);
     lib.ensureXsAppRoute(targetRoot);
 
     console.log("\nDone. Next steps:");

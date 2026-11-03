@@ -436,11 +436,18 @@ function findListEnd(lines, startIdx, indentLen, endIdx) {
  * to the backend module in production. Mirrors exactly what the backend
  * module's "provides: srv-api" already exposes.
  *
+ * Deliberately does NOT add a "sap.cloud.service" tag - found by an actual
+ * failed deploy on ai_report. That tag is only valid alongside
+ * ServiceInstanceName/ServiceKeyName (destinations backed by a real bound
+ * service instance, like aireport_auth); adding it to a plain external-URL
+ * or MTA-placeholder-URL destination makes the content deployer reject it
+ * with "Missing destination property [ServiceInstanceName]".
+ *
  * Two independent read-modify-write passes (requires: list, then
  * destinations: list) rather than one, so an insertion earlier in the file
  * never invalidates line indices computed for a later one.
  */
-function ensureSrvApiDestination(targetRoot, appId) {
+function ensureSrvApiDestination(targetRoot) {
     const mtaPath = path.join(targetRoot, "mta.yaml");
 
     function findDestinationContentBlock(lines) {
@@ -507,8 +514,7 @@ function ensureSrvApiDestination(targetRoot, appId) {
         valIndent + "Authentication: NoAuthentication",
         valIndent + "HTML5.ForwardAuthToken: true",
         valIndent + "ProxyType: Internet",
-        valIndent + "Type: HTTP",
-        valIndent + "sap.cloud.service: " + appId);
+        valIndent + "Type: HTTP");
     fs.writeFileSync(mtaPath, lines.join("\n"));
     console.log("  added the srv-api destination (pointing at ~{srv-api/srv-url}) to the destination-content module");
 }
