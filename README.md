@@ -10,6 +10,38 @@ v1 scope is OData V2 List Report / Object Page apps only (matches
 `sap.suite.ui.generic.template`, `SmartFilterBar`, V2 `ODataModel`). V4 /
 `sap.fe` is not supported yet.
 
+## Complete install sequence (field-tested end to end on `ai_report`)
+
+**Local dev:**
+1. Clone this repo as a sibling of the target app (`git clone <this-repo> nova-copilot`).
+2. From the app's own root: `node ../nova-copilot/packages/cli/install.js`
+3. `npm install`
+4. `cp .env.example .env`, fill in `AICORE_SERVICE_KEY` from a real AI Core service key.
+5. *(optional)* drop a `webapp/nova-brief.json` describing the app.
+6. Start the backend: `npm run start-srv` (not `watch-srv` - flaky in some sandboxes).
+7. Start the frontend: `npm run start-mock` (or `npm start`).
+8. Test locally - ask the chat something, try a filter/chart, confirm it works.
+
+**Production / CF deploy, if you need it:**
+
+9. Make sure the app has CF deploy config already (`mta.yaml`) - if not, `fiori add deploy-config` first.
+10. Have a real AI Core **destination** in BTP with credentials that actually authenticate.
+    **Important:** the cockpit's "Check Connection" button only tests that the URL is
+    network-reachable *without* auth - it does **not** validate the OAuth2
+    `clientId`/`clientSecret`. The only real test is an actual call through the app. If in
+    doubt, use the same `clientId`/`clientSecret` as a `.env` you already know works.
+11. `node ../nova-copilot/packages/cli/prepare-cf.js --destination <name>`
+12. `npm run build:mta`
+13. `npm run deploy` (or `cf deploy mta_archives/<name>.mtar`)
+14. If your org's CF memory quota is tight, add `parameters: { memory: 256M, disk-quota:
+    512M }` to the backend module in `mta.yaml` by hand, then rebuild and redeploy.
+15. If anything 502s/404s/crashes: `cf logs <backend-app> --recent` and read the actual
+    stack trace - every single bug found this session was found this way, not by
+    guessing from the browser error alone.
+16. To surface it in SAP Build Work Zone: register the app in Content Manager using its
+    existing inbound navigation (semantic object/action already in `manifest.json`) - no
+    extra destination work needed, `prepare-cf.js` already wired the production routing.
+
 ## Installing into an app - one command
 
 ```bash

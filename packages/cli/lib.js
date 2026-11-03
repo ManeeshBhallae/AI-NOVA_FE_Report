@@ -577,6 +577,67 @@ function ensureXsuaaBinding(targetRoot) {
 }
 
 /**
+ * Adds a "provides: srv-api" block to the backend module, exposing its own
+ * deployed URL as ${default-url} - the half of the srv-api wiring
+ * ensureSrvApiDestination doesn't cover. That function only wires the
+ * destination-SERVICE resource's init_data to reference
+ * "~{srv-api/srv-url}"; without a module that actually *provides* srv-api,
+ * that placeholder has nothing to resolve against and mbt either fails the
+ * build or (if it ever did build) the destination ends up with an unresolved
+ * literal URL, so every /nova call fails in production. Found on a real
+ * deploy of a second app whose mta.yaml never had this block to begin with
+ * (ai_report's did, inherited from how its deploy config was originally
+ * scaffolded) - this gap wasn't covered by any existing function.
+ */
+function ensureSrvApiProvides(targetRoot) {
+    const mtaPath = path.join(targetRoot, "mta.yaml");
+    const lines = fs.readFileSync(mtaPath, "utf8").split("\n");
+
+    const backend = findModuleBlock(lines, (blockLines) => blockLines.some((l) => /^\s*type:\s*nodejs\s*$/.test(l)));
+    if (!backend) {
+        console.log("  no backend (type: nodejs) module found - skipping the srv-api provides block");
+        return;
+    }
+
+    const blockLines = lines.slice(backend.start, backend.end);
+    const providesIdx = blockLines.findIndex((l) => /^\s*provides:\s*$/.test(l));
+
+    if (providesIdx !== -1) {
+        const absIdx = backend.start + providesIdx;
+        const itemIndent = lines[absIdx].match(/^(\s*)/)[1] + "  ";
+        const listEnd = findListEnd(lines, absIdx, itemIndent.length, backend.end);
+        const alreadyHas = lines.slice(absIdx + 1, listEnd).some((l) => /^\s*- name:\s*srv-api\s*$/.test(l));
+        if (alreadyHas) {
+            console.log("  backend module already provides srv-api - left as is");
+            return;
+        }
+        lines.splice(listEnd, 0,
+            itemIndent + "- name: srv-api",
+            itemIndent + "  properties:",
+            itemIndent + "    srv-url: ${default-url}");
+        fs.writeFileSync(mtaPath, lines.join("\n"));
+        console.log("  added srv-api to the backend module's existing provides: list");
+        return;
+    }
+
+    const typeIdx = blockLines.findIndex((l) => /^\s*type:/.test(l));
+    if (typeIdx === -1) {
+        console.log("  backend module has no \"type:\" line - skipping, add the provides: block by hand");
+        return;
+    }
+    const absTypeIdx = backend.start + typeIdx;
+    const keyIndent = backend.indent + "  ";
+    const itemIndent = keyIndent + "  ";
+    lines.splice(absTypeIdx + 1, 0,
+        keyIndent + "provides:",
+        itemIndent + "- name: srv-api",
+        itemIndent + "  properties:",
+        itemIndent + "    srv-url: ${default-url}");
+    fs.writeFileSync(mtaPath, lines.join("\n"));
+    console.log("  added a provides: srv-api block to the backend module");
+}
+
+/**
  * Overrides the backend module's CF start command to "npx cds-serve",
  * instead of letting the buildpack default to "npm start". Found by an
  * actual deploy crash-looping with "fiori: not found", exit 127: in the
@@ -675,6 +736,7 @@ module.exports = {
     ensureBuildHook,
     setAiDestinationProperty,
     ensureSrvApiDestination,
+    ensureSrvApiProvides,
     ensureXsuaaBinding,
     ensureStartCommand,
     ensureXsAppRoute

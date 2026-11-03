@@ -20,6 +20,9 @@
  *     riskier than getting it from the tool that already knows how
  *   - adds the before-all build hook mbt needs to actually produce gen/srv
  *   - writes NOVA_AI_DESTINATION onto that module as a deploy-time property
+ *   - adds a "provides: srv-api" block to the backend module itself, so it
+ *     actually exposes the URL the destination below points at - without
+ *     this the ~{srv-api/srv-url} placeholder has nothing to resolve
  *   - wires a "srv-api" destination into the destination-SERVICE resource's
  *     own init_data (pointing at ~{srv-api/srv-url}) and the matching
  *     /nova route into xs-app.json, so the deployed app can actually route
@@ -128,6 +131,7 @@ async function main() {
     ensureBackendModule(targetRoot);
     lib.ensureBuildHook(targetRoot);
     lib.setAiDestinationProperty(targetRoot, destinationName);
+    lib.ensureSrvApiProvides(targetRoot);
     lib.ensureSrvApiDestination(targetRoot);
     lib.ensureXsuaaBinding(targetRoot);
     lib.ensureStartCommand(targetRoot);
