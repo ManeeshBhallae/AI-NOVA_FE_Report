@@ -168,11 +168,6 @@
     margin-bottom: 1rem;
 }
 
-.novaSuggestions {
-    width: 100%;
-    align-items: stretch;
-}
-
 /* A chip is a full-width, wrapping pill. SAP buttons keep their label on one
    line and truncate it, which clipped the longer suggestions. */
 .novaSuggestionChip.sapMBtn {
@@ -399,11 +394,19 @@
     overflow: hidden;
 }
 
-.novaExpandChart.sapMBtn {
+.novaExpandChart.sapMHBox {
     margin: 0.25rem 0 0 0;
 }
 
 .novaExpandChart .sapMBtnContent {
+    font-size: 0.75rem;
+}
+
+.novaPinMessage.sapMBtn {
+    margin: 0.25rem 0 0 0;
+}
+
+.novaPinMessage .sapMBtnContent {
     font-size: 0.75rem;
 }
 
@@ -420,4 +423,246 @@
 
 .novaChartHost .sapMFlexItem {
     min-height: 0;
+}
+
+/* ---- shared dialog padding ---- */
+/* sap.m.Dialog's content aggregation has NO default padding of its own -
+   confirmed live: a table built straight into it ran edge to edge and
+   clipped its last column. Every dialog's outermost content wrapper gets
+   this. */
+.novaDialogContentPad {
+    padding: 1.25rem 1.5rem;
+    box-sizing: border-box;
+    gap: 0.5rem;
+}
+
+.novaStatusError.sapMText {
+    color: var(--sapNegativeColor, #b00);
+    font-weight: 600;
+}
+
+/* ---- bulk upload dialog ---- */
+.novaBulkUploadActions {
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.novaBulkUploadStatusText {
+    font-size: 0.8125rem;
+    color: var(--sapContent_LabelColor, #64748b);
+}
+
+.novaBulkUploadHost {
+    margin-top: 0.75rem;
+}
+
+/* sap.ui.table.Table, chosen specifically so columns are genuinely
+   user-resizable (drag the header border) - a real spreadsheet-like grid,
+   not sap.m.Table's fixed-width rows. These rules give every cell real
+   breathing room and visible borders on all four sides, the "grid matrix"
+   look, rather than relying on the control's bare default styling. */
+.novaBulkUploadGrid .sapUiTableCell {
+    padding: 0.5rem 0.75rem;
+    box-sizing: border-box;
+}
+
+.novaBulkUploadGrid .sapUiTableCtrlFirstCol,
+.novaBulkUploadGrid .sapUiTableCell {
+    border-right: 1px solid var(--sapList_BorderColor, #e3e7ec);
+}
+
+.novaBulkUploadGrid .sapUiTableRowHdr,
+.novaBulkUploadGrid .sapUiTableColHdrCnt {
+    background: var(--sapList_HeaderBackground, #f7f9fc);
+}
+
+.novaBulkUploadGrid .sapUiTableCCnt {
+    border: 1px solid var(--sapList_BorderColor, #e3e7ec);
+    border-radius: 0.375rem;
+}
+
+/* ---- workboard ---- */
+/* Report SECTIONS stacked top to bottom (an A4-like document reads this
+   way, not a multi-column card grid) - deliberately simpler than an
+   earlier version of this file, which tried to reflow sap.m.List's
+   internal <ul>/<li> into a wrapping grid by guessing its internal class
+   names. Confirmed live that guess was wrong: no visible card borders, no
+   gaps, tiles stretching edge to edge - the override never actually
+   applied. A plain vertical stack is sap.m.List's own default rendering,
+   so it needs no internal-class guessing at all; only margin/padding on
+   OUR OWN .novaWorkboardTile class, which is guaranteed to exist exactly
+   as written regardless of the framework's own internal structure. */
+.novaWorkboardIntro {
+    padding: 0 0.25rem 0.75rem;
+}
+
+.novaWorkboardCanvasHost {
+    width: 100%;
+}
+
+.novaWorkboardCanvasFlex.sapMList {
+    background: transparent;
+}
+
+/* the real gap between sections - padding on the <li> wrapper I tag and
+   target directly, not margin on the tile inside it. Margin was not
+   reliably producing visible space (confirmed live); padding on an element
+   with no competing box-model behavior around it does. */
+.novaWorkboardListItem.sapMLIB {
+    padding: 0 !important;
+    margin: 0 0 1.25rem 0 !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+/* each tile resizes vertically via the browser's own native resize grip -
+   the same technique #novaDockContainer.novaOpen already uses for the
+   whole dock - rather than a second hand-rolled resize implementation.
+   Not horizontal: a section fills the page width, like a real document. */
+.novaWorkboardTile {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    min-height: 8rem;
+    resize: vertical;
+    overflow: auto;
+    border: 1px solid var(--sapList_BorderColor, #e3e7ec) !important;
+    border-radius: 0.75rem !important;
+    background: var(--sapGroup_ContentBackground, #fff) !important;
+    box-shadow: 0 0.125rem 0.625rem rgba(15, 23, 42, 0.08);
+    box-sizing: border-box;
+}
+
+/* two rows, not one: number+actions on top, title on its own row at full
+   width below - a title sharing a row with icons kept losing the width
+   fight and truncating well before the available space ran out
+   (confirmed live), so it gets the whole row to itself now. */
+.novaWorkboardTileHeader {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.375rem;
+    padding: 1rem 1.125rem;
+    border-bottom: 1px solid var(--sapList_BorderColor, #eef1f5);
+}
+
+.novaWorkboardTileTopRow {
+    width: 100%;
+}
+
+.novaWorkboardTileTitleRow {
+    width: 100%;
+}
+
+/* a quiet section number instead of a bare heading - the thing that most
+   makes this read as "a report" instead of "a stack of cards" */
+.novaWorkboardTileNumber.sapMText {
+    flex-shrink: 0;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    color: var(--sapContent_LabelColor, #94a3b8);
+    font-variant-numeric: tabular-nums;
+}
+
+.novaWorkboardTileTitle {
+    width: 100% !important;
+    min-width: 0;
+}
+
+/* the read-only view - a real document title, not form-field chrome:
+   larger, a touch of letter-spacing, real breathing room on every side
+   instead of sitting flush against the edge */
+.novaWorkboardTileTitleText.sapMText {
+    display: block;
+    padding: 0.25rem 0.5rem;
+    font-weight: 600;
+    font-size: 1.1875rem;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.novaWorkboardTileTitle.sapMInput {
+    background: transparent;
+}
+
+.novaWorkboardTileTitle .sapMInputBaseInner {
+    font-weight: 600;
+    font-size: 1.1875rem;
+    background: transparent;
+    padding: 0.25rem 0.5rem;
+}
+
+/* the drag grip, rename and remove controls fade in together on hover (or
+   while actively renaming) - a resting section shows only its number and
+   title, not a permanent row of admin buttons */
+.novaWorkboardHeaderActions {
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.125rem;
+    opacity: 0;
+    transition: opacity 0.12s ease-in;
+}
+
+.novaWorkboardTile:hover .novaWorkboardHeaderActions,
+.novaWorkboardTileHeader.novaWorkboardEditing .novaWorkboardHeaderActions {
+    opacity: 1;
+}
+
+.novaWorkboardTileContent {
+    padding: 1.5rem 1.75rem !important;
+    box-sizing: border-box;
+}
+
+/* belt-and-suspenders on top of the content padding above - the chart's own
+   VizFrame sets width:100% in JS, so give its direct host some horizontal
+   room of its own too rather than relying only on the parent's padding */
+.novaWorkboardChartHost {
+    width: 100%;
+    padding: 0 0.25rem;
+    box-sizing: border-box;
+}
+
+/* a left accent bar plus a small caps label distinguishes "the AI's
+   commentary" from plain body text at a glance, rather than both reading
+   as the same undifferentiated paragraph */
+.novaWorkboardInsightBlock {
+    margin-top: 0.75rem;
+    padding: 0.625rem 0 0.625rem 0.75rem;
+    border-left: 2px solid #4C5FD5;
+}
+
+.novaWorkboardInsightBlock::before {
+    content: "AI INSIGHT";
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #4C5FD5;
+}
+
+.novaWorkboardInsightText.sapMText {
+    display: block;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--sapContent_LabelColor, #475569);
+}
+
+.novaWorkboardInsightPending .novaWorkboardInsightText.sapMText {
+    font-style: italic;
+    color: var(--sapContent_LabelColor, #94a3b8);
+}
+
+.novaWorkboardInsightPending::before {
+    opacity: 0.5;
+}
+
+.novaWorkboardTileContent .sapMTextArea {
+    border: none;
+}
+
+.novaWorkboardTileContent textarea {
+    resize: none;
+    font-size: 0.8125rem;
 }

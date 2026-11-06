@@ -1,0 +1,54 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core">
+    <Dialog
+        id="novaWorkboardDialog"
+        title="Workboard"
+        contentWidth="42rem"
+        contentHeight="56rem"
+        resizable="true"
+        draggable="true"
+        afterClose="onWorkboardDialogClosed">
+        <content>
+            <VBox id="novaWorkboardContentPad" class="novaDialogContentPad" height="100%">
+                <HBox id="novaWorkboardIntro" class="novaWorkboardIntro" alignItems="Center" justifyContent="SpaceBetween">
+                    <Text
+                        id="novaWorkboardIntroText"
+                        text="Pin charts and answers here from the chat, add your own notes, then export the board."
+                        visible="{= (${workboard>/tiles} || []).length === 0 }" />
+                    <ToolbarSpacer id="novaWorkboardIntroSpacer" />
+                    <Button
+                        id="novaWorkboardAddNoteButton"
+                        text="Add note"
+                        icon="sap-icon://add-document"
+                        type="Transparent"
+                        press="onWorkboardAddNote" />
+                </HBox>
+                <Text
+                    id="novaWorkboardStatusText"
+                    class="{= ${workboard>/isError} ? 'sapUiTinyMarginBottom novaWorkboardStatusText novaStatusError' : 'sapUiTinyMarginBottom novaWorkboardStatusText' }"
+                    text="{workboard>/statusText}"
+                    visible="{= !!${workboard>/statusText} }" />
+                <ScrollContainer id="novaWorkboardScroll" height="100%" width="100%" horizontal="false" vertical="true">
+                    <VBox id="novaWorkboardCanvasHost" class="novaWorkboardCanvasHost" />
+                </ScrollContainer>
+            </VBox>
+        </content>
+        <buttons>
+            <Button
+                id="novaWorkboardExportPdfButton"
+                text="Export PDF"
+                icon="sap-icon://pdf-attachment"
+                type="Emphasized"
+                enabled="{= (${workboard>/tiles} || []).length > 0 }"
+                press="onWorkboardExportPdf" />
+            <Button
+                id="novaWorkboardExportPptxButton"
+                text="Export PPTX"
+                icon="sap-icon://attachment"
+                enabled="{= (${workboard>/tiles} || []).length > 0 }"
+                press="onWorkboardExportPptx" />
+            <Button id="novaWorkboardCloseButton" text="Close" press="onWorkboardDialogClose" />
+        </buttons>
+    </Dialog>
+</core:FragmentDefinition>

@@ -22,7 +22,10 @@ sap.ui.define([
     // the orchestration request shape. The app only sends a question + context.
     var NOVA_ASK_URL = NOVA_BASE + "nova/ask";
     var NOVA_EXTRACT_URL = NOVA_BASE + "nova/extractFields";
+    var NOVA_EXTRACT_LINE_ITEMS_URL = NOVA_BASE + "nova/extractLineItems";
     var NOVA_PDF_URL = NOVA_BASE + "nova/extractPdfText";
+    var NOVA_CHART_INSIGHT_URL = NOVA_BASE + "nova/describeChart";
+    var NOVA_RESET_USAGE_URL = NOVA_BASE + "nova/resetUsage";
     // any URL under /nova works for fetching a token - $metadata always exists
     var NOVA_TOKEN_URL = NOVA_BASE + "nova/$metadata";
 
@@ -33,6 +36,34 @@ sap.ui.define([
     // production it is fetched once, cached, and only re-fetched if the
     // service reports the cached one stale.
     var sCsrfToken = null;
+
+    // Last-known token usage, parsed off the x-nova-tokens response header
+    // the service now sets on every model call - the exact counts AI Core
+    // reported, which SAP meters into capacity units. Held module-level
+    // (same lifetime as the dock's shared model) with a simple listener so
+    // the UI can show a live counter without any extra request.
+    var oLastUsage = null;
+    var aUsageListeners = [];
+
+    function captureUsage(oResponse) {
+        try {
+            var sHeader = oResponse.headers.get("x-nova-tokens");
+            if (!sHeader) {
+                return;
+            }
+            oLastUsage = JSON.parse(sHeader);
+            Logger.step("AiClient", "token usage", oLastUsage);
+            aUsageListeners.forEach(function (fnListener) {
+                try {
+                    fnListener(oLastUsage);
+                } catch (oError) {
+                    // one bad listener must not break the others or the call
+                }
+            });
+        } catch (oError) {
+            // telemetry only - never let it affect the actual response
+        }
+    }
 
     function fetchCsrfToken() {
         return fetch(NOVA_TOKEN_URL, {
@@ -69,6 +100,9 @@ sap.ui.define([
                 sCsrfToken = null;
                 return postWithCsrf(sUrl, oInit, true);
             }
+            // one central hook - every AI action POSTs through here, so the
+            // usage counter needs no per-action wiring
+            captureUsage(oResponse);
             return oResponse;
         });
     }
@@ -101,6 +135,44 @@ sap.ui.define([
     }
 
     return {
+        /** Registers a listener called with {action, prompt, completion, total, sessionCalls, sessionTotal, sessionCu} after every model call. */
+        onUsage: function (fnListener) {
+            if (aUsageListeners.indexOf(fnListener) === -1) {
+                aUsageListeners.push(fnListener);
+            }
+            if (oLastUsage) {
+                fnListener(oLastUsage);
+            }
+        },
+
+        /**
+         * Clears the usage counters everywhere: the service's session AND
+         * persisted all-time totals, then this module's own last-known
+         * numbers (listeners get null so the UI empties too). No model
+         * call involved.
+         * @returns {Promise<void>}
+         */
+        resetUsage: function () {
+            Logger.step("AiClient", "POST " + NOVA_RESET_USAGE_URL);
+            return postWithCsrf(NOVA_RESET_USAGE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}"
+            }).then(function (oResponse) {
+                if (!oResponse.ok) {
+                    return oResponse.text().then(function (sText) {
+                        throw new Error("Could not clear the usage counters (" + oResponse.status + "): " + sText);
+                    });
+                }
+                oLastUsage = null;
+                aUsageListeners.forEach(function (fnListener) {
+                    try {
+                        fnListener(null);
+                    } catch (oError) { /* one bad listener must not break the others */ }
+                });
+            });
+        },
+
         /**
          * Hands a base64 PDF to the service and gets its text layer back.
          * The file reaches our own service only; the model sees just the text.
@@ -123,6 +195,40 @@ sap.ui.define([
                     }
                     var sText = oBody && oBody.value !== undefined ? oBody.value : oBody;
                     Logger.step("AiClient", "PDF text extracted", { characters: String(sText).length });
+                    return String(sText || "");
+                });
+            });
+        },
+
+        /**
+         * Asks the service to write a short, grounded insight for a chart -
+         * only called when a chart is pinned to the workboard, not on every
+         * chart built in chat. Unlike ask()/extractFields(), the summary
+         * sent here is already-aggregated category totals the chart itself
+         * displays - never individual record values.
+         *
+         * @param {{title:string, dimensionLabel:string, measures:object[], rows:object[]}} oSummary
+         * @returns {Promise<string>} a short plain-text insight
+         */
+        describeChart: function (oSummary) {
+            var sPayload = JSON.stringify({ chart: JSON.stringify(oSummary) });
+            Logger.step("AiClient", "POST " + NOVA_CHART_INSIGHT_URL, {
+                dimension: oSummary.dimensionLabel,
+                categories: (oSummary.rows || []).length,
+                payloadBytes: sPayload.length
+            });
+            return postWithCsrf(NOVA_CHART_INSIGHT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: sPayload
+            }).then(function (oResponse) {
+                return oResponse.json().then(function (oBody) {
+                    if (!oResponse.ok) {
+                        var sDetail = (oBody && oBody.error && oBody.error.message) ||
+                            ("the service returned " + oResponse.status);
+                        throw new Error(sDetail);
+                    }
+                    var sText = oBody && oBody.value !== undefined ? oBody.value : oBody;
                     return String(sText || "");
                 });
             });
@@ -153,20 +259,54 @@ sap.ui.define([
         },
 
         /**
+         * Hands one or more invoice documents (text already extracted
+         * client-side for text PDFs, or resized images for everything else)
+         * to the service in ONE call for the whole batch - the model does
+         * its own OCR on image documents, so no separate OCR library or
+         * extra round trip is involved. Uses a separate, much shorter
+         * prompt than the chat, same reasoning as extractFields.
+         *
+         * @param {object[]} aDocuments [{name, kind:"text"|"image", text?, mimeType?, base64?}]
+         * @param {object[]} aFields writable fields with name, type and label
+         * @returns {Promise<{documents: object[]}>}
+         */
+        extractLineItems: function (aDocuments, aFields) {
+            Logger.step("AiClient", "POST " + NOVA_EXTRACT_LINE_ITEMS_URL, {
+                documentCount: aDocuments.length,
+                imageCount: aDocuments.filter(function (d) { return d.kind === "image"; }).length,
+                fieldsOffered: aFields.length
+                // deliberately no content/size trace beyond counts - the
+                // documents are the user's own upload, same posture as
+                // extractFields's documentChars-only trace
+            });
+            return postJson(NOVA_EXTRACT_LINE_ITEMS_URL, {
+                documents: JSON.stringify(aDocuments),
+                fields: JSON.stringify(aFields)
+            }).then(function (oResult) {
+                Logger.step("AiClient", "line-item extraction returned " +
+                    ((oResult.documents || []).length) + " document result(s)");
+                return oResult;
+            });
+        },
+
+        /**
          * @param {string} sQuestion plain-English user question
          * @param {object} oContext app/entity/filter/row context from ContextCollector
+         * @param {Array<{role:string,text:string}>} [aHistory] prior turns, most recent conversation first
          * @returns {Promise<object>} resolves to the parsed { action, filters, message } object
          */
-        ask: function (sQuestion, oContext) {
+        ask: function (sQuestion, oContext, aHistory) {
             var sPayload = JSON.stringify({
                 question: sQuestion,
-                context: JSON.stringify(oContext)
+                context: JSON.stringify(oContext),
+                history: JSON.stringify(aHistory || [])
             });
 
             Logger.step("AiClient", "POST " + NOVA_ASK_URL, {
                 question: sQuestion,
                 // record values are never part of the payload - assert it in the trace
                 recordValuesSent: !!(oContext && oContext.rows),
+                historyTurns: (aHistory || []).length,
                 payloadBytes: sPayload.length
             });
 

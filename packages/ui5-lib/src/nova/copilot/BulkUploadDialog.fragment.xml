@@ -1,0 +1,63 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+    xmlns:u="sap.ui.unified">
+    <Dialog
+        id="novaBulkUploadDialog"
+        title="Bulk create"
+        contentWidth="60rem"
+        contentHeight="34rem"
+        resizable="true"
+        draggable="true"
+        afterClose="onBulkUploadDialogClosed">
+        <content>
+            <VBox id="novaBulkUploadContentPad" class="novaDialogContentPad">
+                <Text id="novaBulkUploadIntroText" text="Fill in and upload an Excel template, or upload one or more invoices and let AI read the line items off them. Nothing is created until you review the rows below and press Create." />
+                <HBox id="novaBulkUploadActions" class="sapUiTinyMarginTop novaBulkUploadActions">
+                    <Button
+                        id="novaBulkDownloadButton"
+                        text="Download template"
+                        icon="sap-icon://download"
+                        press="onBulkDownloadTemplate" />
+                    <u:FileUploader
+                        id="novaBulkUploader"
+                        buttonOnly="true"
+                        icon="sap-icon://upload"
+                        buttonText="Upload filled template"
+                        tooltip="Upload the filled-in template"
+                        fileType="xlsx"
+                        change="onBulkFileSelected"
+                        class="sapUiTinyMarginBegin" />
+                    <u:FileUploader
+                        id="novaInvoiceUploader"
+                        buttonOnly="true"
+                        multiple="true"
+                        icon="sap-icon://camera"
+                        buttonText="Upload invoices (AI reads them)"
+                        tooltip="Upload one or more invoices - PDF, JPG, PNG or WEBP"
+                        fileType="pdf,jpg,jpeg,png,webp"
+                        change="onInvoiceFilesSelected"
+                        typeMissmatch="onInvoiceFileTypeMismatch"
+                        class="sapUiTinyMarginBegin" />
+                </HBox>
+                <Text
+                    id="novaBulkUploadStatusText"
+                    class="{= ${bulkUpload>/isError} ? 'sapUiTinyMarginTop novaBulkUploadStatusText novaStatusError' : 'sapUiTinyMarginTop novaBulkUploadStatusText' }"
+                    text="{bulkUpload>/statusText}"
+                    visible="{= !!${bulkUpload>/statusText} }" />
+                <VBox id="novaBulkUploadHost" class="novaBulkUploadHost" />
+            </VBox>
+        </content>
+        <beginButton>
+            <Button
+                id="novaBulkSubmitButton"
+                text="{= 'Create ' + (${bulkUpload>/cleanCount} || 0) + ' record(s)' }"
+                type="Emphasized"
+                enabled="{= (${bulkUpload>/cleanCount} || 0) > 0 }"
+                press="onConfirmBulkUpload" />
+        </beginButton>
+        <endButton>
+            <Button id="novaBulkCancelButton" text="Cancel" press="onBulkUploadDialogClose" />
+        </endButton>
+    </Dialog>
+</core:FragmentDefinition>

@@ -36,11 +36,21 @@
                     iconOnly="true"
                     icon="sap-icon://attachment"
                     tooltip="Fill this record in from a document"
-                    buttonType="Transparent"
                     fileType="txt,csv,tsv,json,md,xml,log,pdf"
                     multiple="false"
                     change="onDocumentSelected"
-                    class="novaUploader" />
+                    class="novaUploader">
+                    <!-- FileUploader implements IFormContent/IProcessableBlobs, not
+                         IOverflowToolbarContent - confirmed in its own source. Left
+                         unpinned it could get relocated into the overflow popover,
+                         where a control that doesn't implement that interface can
+                         silently stop working (same class of bug already hit once
+                         with the old consent-toggle HBox). Pinned NeverOverflow,
+                         same technique already used for Minimise/Close below. -->
+                    <u:layoutData>
+                        <OverflowToolbarLayoutData id="novaUploaderLayout" priority="NeverOverflow" />
+                    </u:layoutData>
+                </u:FileUploader>
                 <OverflowToolbarButton
                     id="novaChartButton"
                     icon="sap-icon://bar-chart"
@@ -48,6 +58,46 @@
                     tooltip="Construct a chart"
                     type="Transparent"
                     press="onConstructChart" />
+                <OverflowToolbarButton
+                    id="novaSmartSuggestButton"
+                    icon="sap-icon://filter"
+                    text="Suggest filters &amp; sorts"
+                    tooltip="Suggest useful filter and sort operations for this screen"
+                    type="Transparent"
+                    press="onSmartSuggest" />
+                <OverflowToolbarButton
+                    id="novaWorkboardButton"
+                    icon="sap-icon://grid"
+                    text="Workboard"
+                    tooltip="Open the workboard"
+                    type="Transparent"
+                    press="onOpenWorkboard" />
+                <OverflowToolbarButton
+                    id="novaBulkUploadButton"
+                    icon="sap-icon://upload-to-cloud"
+                    text="Bulk create"
+                    tooltip="Bulk create from Excel or invoice documents"
+                    type="Transparent"
+                    press="onBulkUploadPress" />
+                <OverflowToolbarButton
+                    id="novaDataConsentButton"
+                    icon="{= ${aiChat>/aiDataConsent} ? 'sap-icon://accept' : 'sap-icon://circle-task-2' }"
+                    text="{= 'Let AI read data: ' + (${aiChat>/aiDataConsent} ? 'ON' : 'OFF') }"
+                    tooltip="Let AI read real data, for smarter filters and chart insights - off by default"
+                    type="Transparent"
+                    press="onToggleDataConsent" />
+                <!-- always present, never conditionally shown: a button
+                     appearing mid-session makes the OverflowToolbar
+                     re-layout and shuffle its neighbours into/out of the
+                     overflow popup (confirmed live) - a stable toolbar
+                     beats hiding an empty-state button -->
+                <OverflowToolbarButton
+                    id="novaUsageButton"
+                    icon="sap-icon://money-bills"
+                    text="AI usage &amp; cost"
+                    tooltip="AI usage and estimated cost - exact token counts reported by AI Core"
+                    type="Transparent"
+                    press="onShowAiUsage" />
                 <OverflowToolbarButton
                     id="novaKnowledgeButton"
                     icon="sap-icon://information"
@@ -155,14 +205,6 @@
                         text="Ask in plain English — I can filter this list or answer about what's on screen."
                         textAlign="Center"
                         class="novaEmptyHint" />
-                    <VBox id="novaSuggestions" class="novaSuggestions" items="{aiChat>/suggestions}">
-                        <Button
-                            id="novaSuggestionButton"
-                            text="{aiChat>text}"
-                            type="Transparent"
-                            press="onSuggestionPress"
-                            class="novaSuggestionChip" />
-                    </VBox>
                 </VBox>
 
                 <List
@@ -193,14 +235,28 @@
                                     id="novaMsgChart"
                                     visible="{aiChat>hasChart}"
                                     class="novaMsgChart" />
+                                <HBox id="novaChartActions" visible="{aiChat>hasChart}" class="novaExpandChart">
+                                    <Button
+                                        id="novaExpandChartButton"
+                                        icon="sap-icon://full-screen"
+                                        text="View full screen"
+                                        type="Transparent"
+                                        press="onExpandChart" />
+                                    <Button
+                                        id="novaPinChartButton"
+                                        icon="sap-icon://pushpin-on"
+                                        text="Pin to workboard"
+                                        type="Transparent"
+                                        press="onPinChartToWorkboard" />
+                                </HBox>
                                 <Button
-                                    id="novaExpandChartButton"
-                                    visible="{aiChat>hasChart}"
-                                    icon="sap-icon://full-screen"
-                                    text="View full screen"
+                                    id="novaPinMessageButton"
+                                    visible="{= !${aiChat>hasChart} &amp;&amp; (!!${aiChat>text} || (${aiChat>bullets} &amp;&amp; ${aiChat>bullets}.length > 0)) }"
+                                    icon="sap-icon://pushpin-on"
+                                    text="Pin to workboard"
                                     type="Transparent"
-                                    press="onExpandChart"
-                                    class="novaExpandChart" />
+                                    press="onPinMessageToWorkboard"
+                                    class="novaPinMessage" />
                                 <VBox
                                     id="novaPromptChips"
                                     visible="{aiChat>hasPrompts}"

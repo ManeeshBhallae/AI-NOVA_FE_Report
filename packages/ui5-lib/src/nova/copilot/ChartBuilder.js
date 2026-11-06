@@ -26,6 +26,18 @@ sap.ui.define([
         return String(sField).replace(/\//g, "_");
     }
 
+    // "average" division produces long repeating decimals (215/6 =
+    // 35.833333333333336) that showed up verbatim in both the chart's data
+    // labels and, worse, in the AI-written insight text - confirmed live,
+    // the model faithfully reproduced the raw unrounded figure because it
+    // was told never to state a number it wasn't given. Rounding once here,
+    // at the one place aggregation actually happens, fixes it everywhere
+    // downstream (chart, chartSummary, the insight prompt) rather than
+    // needing a fix at each consumer.
+    function round2(fValue) {
+        return Math.round(fValue * 100) / 100;
+    }
+
     function isNumeric(oProperty) {
         return /Edm\.(Int|Decimal|Double|Single|Byte)/.test((oProperty && oProperty.type) || "");
     }
@@ -69,11 +81,11 @@ sap.ui.define([
             oOut[flatKey(sDimension)] = sKey;
             aMeasures.forEach(function (sMeasure) {
                 if (sAggregation === "average") {
-                    oOut[flatKey(sMeasure)] = oGroup.count ? oGroup.sums[sMeasure] / oGroup.count : 0;
+                    oOut[flatKey(sMeasure)] = oGroup.count ? round2(oGroup.sums[sMeasure] / oGroup.count) : 0;
                 } else if (sAggregation === "count") {
                     oOut[flatKey(sMeasure)] = oGroup.count;
                 } else {
-                    oOut[flatKey(sMeasure)] = oGroup.sums[sMeasure];
+                    oOut[flatKey(sMeasure)] = round2(oGroup.sums[sMeasure]);
                 }
             });
             return oOut;
@@ -227,7 +239,16 @@ sap.ui.define([
 
                 oVizFrame.setVizProperties({
                     title: { visible: !!oChart.title, text: oChart.title || "" },
-                    plotArea: { dataLabel: { visible: aRows.length <= 12 } },
+                    plotArea: {
+                        dataLabel: { visible: aRows.length <= 12 },
+                        // a restrained, deliberate palette instead of the
+                        // theme's default chart blue on everything - every
+                        // chart in the app used the exact same single blue
+                        // regardless of context, which read as flat/generic
+                        // rather than considered, especially once several
+                        // charts sit together on the workboard
+                        colorPalette: ["#4C5FD5", "#16A394", "#E8A33D", "#D1495B", "#8661C5", "#5B8C5A"]
+                    },
                     legend: { visible: aMeasures.length > 1 || sType === "pie" || sType === "donut" }
                 });
 
@@ -235,7 +256,31 @@ sap.ui.define([
                 }
 
                 Logger.step("ChartBuilder", "chart ready with " + aRows.length + " category(ies)");
-                return { createFrame: createFrame, rows: aRows.length, dropped: aDropped };
+
+                // a plain summary of the already-aggregated totals the chart
+                // itself displays, pre-built here (where the label/flatKey
+                // logic already lives) so a caller pinning this chart to the
+                // workboard can hand it straight to AiClient.describeChart()
+                // without re-deriving any of this
+                var aSummaryRows = aRows.map(function (oRow) {
+                    var oValues = {};
+                    aMeasureDefs.forEach(function (oDef, i) {
+                        oValues[oDef.name] = oRow[flatKey(aMeasures[i])];
+                    });
+                    return { category: oRow[flatKey(sDimension)], values: oValues };
+                });
+
+                return {
+                    createFrame: createFrame,
+                    rows: aRows.length,
+                    dropped: aDropped,
+                    chartSummary: {
+                        title: oChart.title || "",
+                        dimensionLabel: sDimensionLabel,
+                        aggregation: oChart.aggregation || "sum",
+                        rows: aSummaryRows
+                    }
+                };
             });
         }
     };

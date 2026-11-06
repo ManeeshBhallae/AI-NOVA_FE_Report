@@ -166,8 +166,12 @@ sap.ui.define([
                     maxLength: oProp.maxLength,
                     creatable: oProp["sap:creatable"] !== "false",
                     updatable: oProp["sap:updatable"] !== "false",
-                    filterable: oProp["sap:filterable"] !== "false",
-                    sortable: oProp["sap:sortable"] !== "false"
+                    filterable: oProp["sap:filterable"] !== "false"
+                    // "sortable" was computed and sent here too, but never
+                    // once referenced by any instruction in prompt.js -
+                    // pure wasted tokens on every single question, for
+                    // every field, dropped per the "don't send more than
+                    // the model actually needs" rule
                 };
             });
 
@@ -322,12 +326,15 @@ sap.ui.define([
                 return oTerm[sProperty].Bool !== "false";
             }
 
+            // searchable/pageable used to be computed and sent here too -
+            // dropped for the same reason as "sortable" on properties above:
+            // prompt.js's instructions only ever reason about create/update/
+            // delete, never about search or pagination support, so those
+            // two flags were pure wasted tokens on every question
             var oFlags = {
                 creatable: v2Flag("creatable") !== undefined ? v2Flag("creatable") : v4Flag("InsertRestrictions", "Insertable"),
                 updatable: v2Flag("updatable") !== undefined ? v2Flag("updatable") : v4Flag("UpdateRestrictions", "Updatable"),
-                deletable: v2Flag("deletable") !== undefined ? v2Flag("deletable") : v4Flag("DeleteRestrictions", "Deletable"),
-                searchable: v2Flag("searchable"),
-                pageable: v2Flag("pageable")
+                deletable: v2Flag("deletable") !== undefined ? v2Flag("deletable") : v4Flag("DeleteRestrictions", "Deletable")
             };
 
             // operations the service exposes beyond plain CRUD
@@ -479,55 +486,6 @@ sap.ui.define([
 
             mCache[sKey] = { sources: aSources, pack: oPack };
             return mCache[sKey];
-        },
-
-        /**
-         * Starter prompts derived from whatever the host entity actually offers.
-         * Nothing here names a concrete entity or field - the labels come from
-         * the metamodel, so the same code produces sensible chips in any app.
-         *
-         * @param {object} oKnowledge result of get()
-         * @returns {object[]} [{ text }]
-         */
-        suggest: function (oKnowledge) {
-            var oService = (oKnowledge && oKnowledge.pack && oKnowledge.pack.service) || {};
-            var oAnnotations = (oKnowledge && oKnowledge.pack && oKnowledge.pack.annotations) || {};
-            var aProperties = oService.properties || [];
-            var aFilterable = (oAnnotations.selectionFields || []).length
-                ? aProperties.filter(function (oProp) {
-                    return oAnnotations.selectionFields.indexOf(oProp.name) !== -1;
-                })
-                : aProperties.filter(function (oProp) {
-                    return oProp.filterable;
-                });
-
-            function firstOfType(aTypes) {
-                return aFilterable.filter(function (oProp) {
-                    return aTypes.some(function (sType) {
-                        return (oProp.type || "").indexOf(sType) !== -1;
-                    });
-                })[0];
-            }
-
-            var aSuggestions = [];
-            var oBoolean = firstOfType(["Boolean"]);
-            var oNumeric = firstOfType(["Int", "Decimal", "Double", "Single"]);
-            var oText = firstOfType(["String"]);
-
-            if (oBoolean) {
-                aSuggestions.push({ text: "Show only where " + oBoolean.label + " is true" });
-            }
-            if (oNumeric) {
-                aSuggestions.push({ text: "Which has the lowest " + oNumeric.label + "?" });
-            }
-            if (oText && aSuggestions.length < 3) {
-                aSuggestions.push({ text: oText.label + " starting with A" });
-            }
-            if (!aSuggestions.length) {
-                aSuggestions.push({ text: "What can I ask about this screen?" });
-            }
-
-            return aSuggestions.slice(0, 3);
         },
 
         /** Exposed so callers can reach the host app's descriptor too. */

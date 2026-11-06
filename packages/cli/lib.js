@@ -22,6 +22,12 @@ const UI5_FILES = [
     "FieldPopulator.js",
     "AiClient.js",
     "DocumentReader.js",
+    "BulkUpload.js",
+    "ImageResizer.js",
+    "Workboard.js",
+    "WorkboardExporter.js",
+    "ODataBatchFix.js",
+    "ThirdPartyLoader.js",
     "Logger.js",
     path.join("knowledge", "AppKnowledge.js"),
     path.join("knowledge", "AppBrief.js"),
@@ -29,13 +35,42 @@ const UI5_FILES = [
     "ObjectPageExt.controller.js",
     "ChatPanel.fragment.xml",
     "ChartDialog.fragment.xml",
+    "BulkUploadDialog.fragment.xml",
+    "WorkboardDialog.fragment.xml",
     "ChatPanel.css",
     path.join("i18n", "messagebundle.properties")
 ];
 
-const CAP_FILES = ["nova-service.cds", "nova-service.js", "prompt.js", "extractPrompt.js"];
+// Pure framework logic - nobody is meant to hand-edit these, so they're
+// always refreshed on reinstall, same as every UI5_FILES entry. Getting this
+// wrong bit us twice: a backend fix (history, filter merging) silently
+// never reached an already-installed app because these used to sit in the
+// same skip-if-exists bucket as prompt.js below.
+const CAP_FRAMEWORK_FILES = ["nova-service.cds", "nova-service.js", "extractPrompt.js", "chartInsightPrompt.js",
+    "invoiceLineItemsPrompt.js"];
+
+// The one file a team is explicitly meant to customize per app (their own
+// system prompt) - left alone if it already exists, so an install/reinstall
+// can never clobber someone's edits here.
+const CAP_CUSTOMIZABLE_FILES = ["prompt.js"];
 
 const VENDOR_SUBDIR = path.join("webapp", "ext", "novaCopilot");
+
+// Plain browser (UMD) builds this classic UI5 app (no bundler) loads via a
+// dynamically injected <script> tag (see ThirdPartyLoader.js) rather than as
+// an npm dependency, which would only ever reach the CAP backend's Node
+// code, never the browser. Copied byte-for-byte - these must NEVER go
+// through rewriteNamespace, unlike every other vendored file.
+const THIRDPARTY_SRC = path.join(UI5_SRC, "thirdparty");
+const THIRDPARTY_FILES = [
+    "xlsx.full.min.js",
+    "jspdf.umd.min.js",
+    "pptxgen.bundle.js",
+    "jszip.min.js",
+    "html2canvas.min.js",
+    "pdf.min.js",
+    "pdf.worker.min.js"
+];
 
 function fail(message) {
     console.error("\nnova-copilot: " + message);
@@ -93,21 +128,40 @@ function copyVendoredFiles(targetRoot, nsDot, nsSlash) {
     console.log("  wrote " + UI5_FILES.length + " file(s) to " + path.join(VENDOR_SUBDIR));
 }
 
+function copyThirdPartyFiles(targetRoot) {
+    const destDir = path.join(targetRoot, VENDOR_SUBDIR, "thirdparty");
+    fs.mkdirSync(destDir, { recursive: true });
+    THIRDPARTY_FILES.forEach((name) => {
+        fs.copyFileSync(path.join(THIRDPARTY_SRC, name), path.join(destDir, name));
+    });
+    console.log("  wrote " + THIRDPARTY_FILES.length + " vendored third-party script(s) to " +
+        path.join(VENDOR_SUBDIR, "thirdparty") + " (xlsx, jsPDF, pptxgenjs, JSZip, html2canvas, pdf.js)");
+}
+
 function copyCapFiles(targetRoot) {
     const destDir = path.join(targetRoot, "srv");
     fs.mkdirSync(destDir, { recursive: true });
-    let written = 0, skipped = 0;
-    CAP_FILES.forEach((name) => {
+
+    let written = 0;
+    CAP_FRAMEWORK_FILES.forEach((name) => {
+        fs.copyFileSync(path.join(CAP_SRC, name), path.join(destDir, name));
+        written++;
+    });
+
+    let customWritten = 0, skipped = 0;
+    CAP_CUSTOMIZABLE_FILES.forEach((name) => {
         const destPath = path.join(destDir, name);
         if (fs.existsSync(destPath)) {
             skipped++;
-            console.log("  skipped srv/" + name + " (already exists - treat as yours to edit, e.g. prompt.js)");
+            console.log("  left srv/" + name + " as is (yours to edit - never overwritten by reinstall)");
             return;
         }
         fs.copyFileSync(path.join(CAP_SRC, name), destPath);
-        written++;
+        customWritten++;
     });
-    console.log("  wrote " + written + " file(s) to srv/" + (skipped ? (", skipped " + skipped + " existing") : ""));
+
+    console.log("  wrote/refreshed " + (written + customWritten) + " file(s) to srv/" +
+        (skipped ? (", left " + skipped + " customized file(s) untouched") : ""));
 }
 
 function patchManifest(targetRoot, nsDot) {
@@ -132,11 +186,23 @@ function patchManifest(targetRoot, nsDot) {
         changed = true;
     }
 
+    // Bulk upload's review grid uses sap.ui.table.Table for real drag-to-resize
+    // columns (sap.m.Table has no such capability) - unlike sap.viz/
+    // sap.ui.unified, this one is NOT already part of every Fiori Elements V2
+    // LROP generator scaffold, so it has to be added explicitly, the same way
+    // the controller extensions above are.
+    const dependencies = ui5.dependencies || (ui5.dependencies = {});
+    const libs = dependencies.libs || (dependencies.libs = {});
+    if (!libs["sap.ui.table"]) {
+        libs["sap.ui.table"] = {};
+        changed = true;
+    }
+
     if (changed) {
         writeJson(manifestPath, manifest);
-        console.log("  patched webapp/manifest.json (sap.ui.controllerExtensions)");
+        console.log("  patched webapp/manifest.json (controller extensions, sap.ui.table dependency)");
     } else {
-        console.log("  webapp/manifest.json already wires up controller extensions - left as is");
+        console.log("  webapp/manifest.json already wires up controller extensions and sap.ui.table - left as is");
     }
 }
 
@@ -269,6 +335,63 @@ function patchUi5YamlBackends(targetRoot) {
     });
 }
 
+/**
+ * The manifest.json dependency (see patchManifest) tells the Fiori
+ * Launchpad/production build what to preload; the LOCAL dev server reads
+ * its own, separate list in each ui5*.yaml's framework.libraries - without
+ * an entry there, `fiori run` has no local copy of the library cached at
+ * all and sap/ui/table/Table.js 404s. Same across every ui5*.yaml variant
+ * (ui5.yaml, ui5-local.yaml, ui5-mock.yaml, ui5-deploy.yaml, ...), since
+ * each declares its framework independently.
+ */
+function ensureFrameworkLibrary(targetRoot, libraryName) {
+    const files = fs.readdirSync(targetRoot).filter((f) => /^ui5.*\.yaml$/.test(f));
+    if (!files.length) {
+        console.log("  no ui5*.yaml files found - nothing to patch for " + libraryName);
+        return;
+    }
+
+    files.forEach((fileName) => {
+        const filePath = path.join(targetRoot, fileName);
+        const lines = fs.readFileSync(filePath, "utf8").split("\n");
+
+        const librariesIdx = lines.findIndex((l) => /^\s*libraries:\s*$/.test(l));
+        if (librariesIdx === -1) {
+            console.log("  " + fileName + " has no framework.libraries list - skipped, add " +
+                libraryName + " manually");
+            return;
+        }
+
+        const itemIndent = lines[librariesIdx].match(/^(\s*)/)[1] + "  ";
+        const nameRe = new RegExp("name:\\s*" + libraryName.replace(/\./g, "\\.") + "\\s*$");
+        let blockEnd = lines.length;
+        let alreadyHas = false;
+        for (let i = librariesIdx + 1; i < lines.length; i++) {
+            if (lines[i].trim() === "") {
+                continue;
+            }
+            const indent = (lines[i].match(/^( *)/) || ["", ""])[1].length;
+            if (indent < itemIndent.length) {
+                blockEnd = i;
+                break;
+            }
+            if (nameRe.test(lines[i])) {
+                alreadyHas = true;
+                break;
+            }
+        }
+
+        if (alreadyHas) {
+            console.log("  " + fileName + " already declares " + libraryName + " - left as is");
+            return;
+        }
+
+        lines.splice(blockEnd, 0, itemIndent + "- name: " + libraryName);
+        fs.writeFileSync(filePath, lines.join("\n"));
+        console.log("  added " + libraryName + " to " + fileName + "'s framework.libraries");
+    });
+}
+
 // Always refreshed, unlike srv/*.js - this is generated documentation, not
 // something a team would hand-edit (their real values go in .env, untouched).
 function writeEnvExample(targetRoot) {
@@ -286,8 +409,10 @@ function runInstall(targetArg) {
 
     console.log("Frontend:");
     copyVendoredFiles(targetRoot, nsDot, nsSlash);
+    copyThirdPartyFiles(targetRoot);
     patchManifest(targetRoot, nsDot);
     patchUi5YamlBackends(targetRoot);
+    ensureFrameworkLibrary(targetRoot, "sap.ui.table");
 
     console.log("\nBackend:");
     copyCapFiles(targetRoot);
@@ -739,5 +864,6 @@ module.exports = {
     ensureSrvApiProvides,
     ensureXsuaaBinding,
     ensureStartCommand,
-    ensureXsAppRoute
+    ensureXsAppRoute,
+    ensureFrameworkLibrary
 };

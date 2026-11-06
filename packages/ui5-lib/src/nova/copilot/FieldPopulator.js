@@ -20,7 +20,8 @@ sap.ui.define([
                 : (oRawProperty["sap:label"] || oRawProperty.name),
             maxLength: oRawProperty.maxLength,
             creatable: oRawProperty["sap:creatable"] !== "false",
-            updatable: oRawProperty["sap:updatable"] !== "false"
+            updatable: oRawProperty["sap:updatable"] !== "false",
+            required: oRawProperty.nullable === "false"
         };
     }
 
@@ -121,6 +122,45 @@ sap.ui.define([
     }
 
     return {
+        /**
+         * Reads an entity type's real metamodel properties (name, type,
+         * label, maxLength, creatable, updatable) plus its key field names -
+         * exposed so other features (e.g. the bulk Excel upload template)
+         * can work out which fields are actually safe to offer for create,
+         * the same way this module already does for a single record, rather
+         * than relying on ContextCollector's thinner {name,type,label}
+         * shape (built for the LLM prompt, not for this).
+         * @returns {{properties: object[], keyFields: string[]}|null}
+         */
+        describeEntityType: function (oODataModel, sEntitySet) {
+            var oMetaModel = oODataModel && oODataModel.getMetaModel && oODataModel.getMetaModel();
+            if (!oMetaModel || !sEntitySet) {
+                return null;
+            }
+            try {
+                var oEntitySet = oMetaModel.getODataEntitySet(sEntitySet);
+                var oEntityType = oEntitySet && oMetaModel.getODataEntityType(oEntitySet.entityType);
+                if (!oEntityType) {
+                    return null;
+                }
+                var aKeyFields = ((oEntityType.key && oEntityType.key.propertyRef) || [])
+                    .map(function (oRef) { return oRef.name; });
+                var aProperties = (oEntityType.property || []).map(describe);
+                return { properties: aProperties, keyFields: aKeyFields };
+            } catch (oError) {
+                return null;
+            }
+        },
+
+        /**
+         * Turns raw text into the type a given OData property declares -
+         * exposed so other features (e.g. bulk Excel upload) can validate/
+         * coerce a cell value exactly the way a single-record fill already
+         * does, instead of re-implementing type coercion a second time.
+         * Returns { ok, value, reason }.
+         */
+        coerce: coerce,
+
         /**
          * Writes values into the record currently open for editing. This only
          * fills the form - nothing is submitted. The user still reviews the

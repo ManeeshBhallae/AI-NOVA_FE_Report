@@ -35,9 +35,9 @@ sap.ui.define([
             if (["xlsx", "xls"].indexOf(sExtension) !== -1) {
                 return "Spreadsheets aren't readable here yet. Save the sheet as .csv and I can read that.";
             }
-            if (["png", "jpg", "jpeg", "gif", "bmp", "tiff"].indexOf(sExtension) !== -1) {
-                return "Images would need optical character recognition, which isn't wired up. " +
-                    "A text version of the document works.";
+            if (["png", "jpg", "jpeg", "gif", "bmp", "tiff", "webp", "heic"].indexOf(sExtension) !== -1) {
+                return "Filling in THIS record needs a text document - images aren't read here. " +
+                    "(Reading images of invoices IS supported in Bulk create, for creating new records.)";
             }
             return "I can read plain text files: .txt, .csv, .json, .md and similar.";
         },
@@ -121,10 +121,20 @@ sap.ui.define([
 
         /**
          * The fields worth asking about: writable, and without the keys, which
-         * should never come from a document.
+         * should never come from a document. Pass the RICH description from
+         * FieldPopulator.describeEntityType ({properties, keyFields}) - the
+         * thin ContextCollector shape carries no creatable/updatable/required
+         * flags and no key list at all, so with it every check here silently
+         * passed and key fields were offered to the model (confirmed by
+         * comparing the two shapes directly - this doc comment used to claim
+         * keys were excluded while nothing excluded them).
          */
         writableFields: function (oEntityMeta, bCreateMode) {
+            var aKeyFields = (oEntityMeta && oEntityMeta.keyFields) || [];
             return ((oEntityMeta && oEntityMeta.properties) || []).filter(function (oProp) {
+                if (aKeyFields.indexOf(oProp.name) !== -1) {
+                    return false;
+                }
                 var bWritable = bCreateMode ? oProp.creatable !== false : oProp.updatable !== false;
                 return bWritable;
             }).map(function (oProp) {
